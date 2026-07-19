@@ -32,4 +32,5 @@ jobs:
         run: uv run pytest -q
 
       - name: Seeded chaos smoke
-        run: bash scripts/gauntlet-soak.sh nginx-down 100 502
+        # uv run so the venv (httpx, lzt_testnet) is on PATH for the `python` inside the script
+        run: uv run bash scripts/gauntlet-soak.sh nginx-down 100 502
