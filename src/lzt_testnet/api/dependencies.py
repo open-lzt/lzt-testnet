@@ -24,3 +24,8 @@ async def force_error_header(
 ) -> str | None:
     """Passes through the raw `X-Testnet-Force-Error` header value, unvalidated."""
     return x_testnet_force_error
+
+
+async def x_chaos_header(x_chaos: str | None = Header(default=None)) -> str | None:
+    """Passes through the raw `X-Chaos` header value; the middleware/planner parse it."""
+    return x_chaos

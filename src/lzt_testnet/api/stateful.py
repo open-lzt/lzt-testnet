@@ -14,7 +14,6 @@ catalog) since they model mutation semantics no catalog spec captures.
 
 from __future__ import annotations
 
-import itertools
 from datetime import UTC, datetime
 from typing import Annotated
 
@@ -23,37 +22,17 @@ from pydantic import BaseModel
 
 from lzt_testnet import errors
 from lzt_testnet.api.dependencies import force_error_header, get_bearer_token
+from lzt_testnet.chaos.domain import DomainOutcome, DomainView, maybe_inject
+from lzt_testnet.chaos.faults import Fault, FaultContext
+from lzt_testnet.chaos.legacy import raise_legacy_forced_error
+from lzt_testnet.chaos.middleware import CHAOS_FAULT_SCOPE_KEY
+from lzt_testnet.chaos.seed import IdKind, SeedController
 from lzt_testnet.fake.generator import FakeGenerator
 from lzt_testnet.state.lot_store import LotRecord, LotStore
 from lzt_testnet.state.payment_store import PaymentRecord, PaymentStore
 from lzt_testnet.state.scenario_store import ScenarioStore
 
 router = APIRouter(prefix="/testnet/stateful")
-
-_item_id_counter = itertools.count(1)
-_operation_id_counter = itertools.count(1)
-
-_FORCE_ERROR_MAP: dict[str, Exception] = {
-    "rate_limited": errors.RateLimited(retry_after=1.0),
-    "auth_failed": errors.AuthFailed(token_id=""),
-    "transport_error": errors.TransportError(status=500),
-    "payment_failed": errors.PaymentFailed(),
-}
-
-
-def _raise_forced_error(force_error: str | None, item_id: int | None = None) -> None:
-    """Raises the typed error requested via `X-Testnet-Force-Error`, before any state access.
-
-    Mirrors `catch_all._FORCE_ERROR_MAP` (same retry/status/sentinel values) plus
-    `not_found`, which stateful routes support but the generic catch-all doesn't need.
-    """
-    if force_error is None:
-        return
-    if force_error == "not_found":
-        raise errors.NotFound(item_id=item_id if item_id is not None else "unknown")
-    mapped = _FORCE_ERROR_MAP.get(force_error)
-    if mapped is not None:
-        raise mapped
 
 
 class Lot(BaseModel):
@@ -99,6 +78,29 @@ def _fake_generator(request: Request) -> FakeGenerator:
     return request.app.state.fake_generator  # type: ignore[no-any-return]
 
 
+def _seed(request: Request) -> SeedController:
+    """The app's SeedController. Lazily attach a default one so the router works when mounted
+    without the full chaos wiring (bare-app tests, embedding elsewhere)."""
+    seed: SeedController | None = getattr(request.app.state, "seed", None)
+    if seed is None:
+        seed = SeedController(0)
+        request.app.state.seed = seed
+    return seed
+
+
+def _domain_outcome(request: Request, item_id: int, token: str) -> DomainOutcome:
+    """Resolve the L2 buy outcome from the fault the middleware decided for this request.
+    Degrades to PROCEED when no chaos middleware is present (no stashed fault)."""
+    stashed: tuple[FaultContext, Fault] | None = request.scope.get(CHAOS_FAULT_SCOPE_KEY)
+    fault = stashed[1] if stashed is not None else None
+    counters: dict[str, int] | None = getattr(request.app.state, "chaos_counters", None)
+    if counters is None:
+        counters = {}
+        request.app.state.chaos_counters = counters
+    view = DomainView(item_id=item_id, token=token, was_bought=False)
+    return maybe_inject(fault, view, counters)
+
+
 def _lot_response(generator: FakeGenerator, record: LotRecord) -> Lot:
     overrides = {
         "item_id": record.item_id,
@@ -128,10 +130,11 @@ async def create_lot(
     force_error: Annotated[str | None, Depends(force_error_header)],
     lot_store: Annotated[LotStore, Depends(_lot_store)],
     generator: Annotated[FakeGenerator, Depends(_fake_generator)],
+    seed: Annotated[SeedController, Depends(_seed)],
 ) -> Lot:
-    _raise_forced_error(force_error)
+    raise_legacy_forced_error(force_error)
     record = LotRecord(
-        item_id=next(_item_id_counter),
+        item_id=seed.next_id(IdKind.LOT),
         seller_token=token,
         category=body.category,
         price=body.price,
@@ -154,7 +157,7 @@ async def list_lots(
     cursor: int | None = Query(default=None),
     limit: int = Query(default=20),
 ) -> list[Lot]:
-    _raise_forced_error(force_error)
+    raise_legacy_forced_error(force_error)
     records, _next_cursor = lot_store.list(
         category=category, seller_token=seller_token, cursor=cursor, limit=limit
     )
@@ -168,7 +171,7 @@ async def bump(
     force_error: Annotated[str | None, Depends(force_error_header)],
     lot_store: Annotated[LotStore, Depends(_lot_store)],
 ) -> dict[str, object]:
-    _raise_forced_error(force_error, item_id)
+    raise_legacy_forced_error(force_error, item_id)
     _owned_lot(lot_store, item_id, token)
     lot_store.update(item_id, published_at=datetime.now(UTC))
     return {}
@@ -182,7 +185,7 @@ async def set_price(
     force_error: Annotated[str | None, Depends(force_error_header)],
     lot_store: Annotated[LotStore, Depends(_lot_store)],
 ) -> dict[str, object]:
-    _raise_forced_error(force_error, item_id)
+    raise_legacy_forced_error(force_error, item_id)
     if not body.price:
         raise errors.BadRequest(field="price")
     _owned_lot(lot_store, item_id, token)
@@ -192,28 +195,45 @@ async def set_price(
 
 @router.post("/lots/{item_id}/buy", operation_id="fast-buy")
 async def fast_buy(
+    request: Request,
     item_id: int,
     token: Annotated[str, Depends(get_bearer_token)],
     force_error: Annotated[str | None, Depends(force_error_header)],
     lot_store: Annotated[LotStore, Depends(_lot_store)],
     payment_store: Annotated[PaymentStore, Depends(_payment_store)],
     scenario_store: Annotated[ScenarioStore, Depends(_scenario_store)],
+    seed: Annotated[SeedController, Depends(_seed)],
 ) -> dict[str, object]:
-    _raise_forced_error(force_error, item_id)
+    raise_legacy_forced_error(force_error, item_id)
     record = lot_store.get(item_id)
     if record is None or scenario_store.was_bought(item_id):
         raise errors.NotFound(item_id=item_id)
+
+    outcome = _domain_outcome(request, item_id, token)
+    if outcome is DomainOutcome.ALREADY_SOLD:
+        raise errors.NotFound(item_id=item_id)  # a racing buyer won it first
+    if outcome is DomainOutcome.TRANSIENT_RETRY:
+        raise errors.RateLimited(retry_after=0.1)  # transient — a retrying client converges
+    if outcome is DomainOutcome.PENDING:
+        return {"status": "pending", "item_id": item_id}
+
+    # PROCEED / FAIL_INVALID / CHARGE_THEN_FAIL all consume the lot — the money moved.
     lot_store.delete(item_id)
     scenario_store.mark_bought(item_id)
+    if outcome is DomainOutcome.CHARGE_THEN_FAIL:
+        raise errors.PaymentFailed()  # charged (lot gone) yet no PaymentRecord — a reconciliation trap
+
     payment_store.append(
         PaymentRecord(
-            operation_id=next(_operation_id_counter),
+            operation_id=seed.next_id(IdKind.PAYMENT),
             account_token=token,
             operation_type="purchase",
             item_id=item_id,
             amount=record.price,
         )
     )
+    if outcome is DomainOutcome.FAIL_INVALID:
+        return {"status": "invalid_account", "item_id": item_id}
     return {}
 
 
@@ -225,6 +245,6 @@ async def payments(
     cursor: int | None = Query(default=None),
     limit: int = Query(default=20),
 ) -> list[PaymentRecord]:
-    _raise_forced_error(force_error)
+    raise_legacy_forced_error(force_error)
     records, _next_cursor = payment_store.list(account_token=token, cursor=cursor, limit=limit)
     return records

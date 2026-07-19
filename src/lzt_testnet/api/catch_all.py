@@ -9,17 +9,10 @@ from pydantic import BaseModel
 
 from lzt_testnet import errors
 from lzt_testnet.api.dependencies import force_error_header, get_bearer_token
+from lzt_testnet.chaos.legacy import raise_legacy_forced_error
 from lzt_testnet.fake.generator import FakeGenerator
 
 router = APIRouter()
-
-_FORCE_ERROR_MAP: dict[str, Exception] = {
-    "rate_limited": errors.RateLimited(retry_after=1.0),
-    "auth_failed": errors.AuthFailed(token_id=""),
-    "transport_error": errors.TransportError(status=500),
-    "payment_failed": errors.PaymentFailed(),
-}
-
 
 _UNCOERCIBLE = object()
 
@@ -57,10 +50,7 @@ async def catch_all(
         raise errors.NotFound(item_id=path or "unknown")
     entry, path_params = match
 
-    if force_error is not None:
-        mapped = _FORCE_ERROR_MAP.get(force_error)
-        if mapped is not None:
-            raise mapped
+    raise_legacy_forced_error(force_error)
 
     scenario_store = request.app.state.scenario_store
     if scenario_store.is_revoked(token):

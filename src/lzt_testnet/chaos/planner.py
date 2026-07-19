@@ -54,11 +54,16 @@ class FaultPlanner:
     def __init__(self, profile: ChaosProfile | None) -> None:
         self._profile = profile
 
+    @property
+    def armed(self) -> bool:
+        """True when a global profile rolls faults; drives the middleware fast-path."""
+        return self._profile is not None
+
     def decide(self, ctx: FaultContext, *, x_chaos: str | None, legacy: str | None) -> Fault | None:
         if x_chaos is not None:
             kind, endpoint = parse_x_chaos(x_chaos)
-            if endpoint is not None and endpoint != ctx.endpoint:
-                return None  # header targets a different endpoint
+            if endpoint is not None and endpoint != "*" and endpoint != ctx.endpoint:
+                return None  # header targets a different endpoint ("*" and no-@ both match all)
             return _fault(kind)
         if legacy is not None:
             legacy_kind = _LEGACY_NAME_MAP.get(legacy)

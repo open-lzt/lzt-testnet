@@ -6,6 +6,8 @@ from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from lzt_testnet.chaos.profiles import Intensity
+
 
 class Settings(BaseSettings):
     """Server settings, sourced from `LZT_TESTNET_*` environment variables."""
@@ -15,6 +17,11 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 8765
     log_level: str = "INFO"
+
+    # Gauntlet chaos harness — OFF by default so the server stays a clean mock (D2).
+    chaos_mode: Intensity = Intensity.OFF
+    chaos_seed: int = 0
+    chaos_scenario: str | None = None
 
 
 @lru_cache
