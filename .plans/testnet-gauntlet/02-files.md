@@ -25,7 +25,8 @@ conventions (00-audit "follow").
 | `src/lzt_testnet/world/__init__.py` | package marker |
 | `src/lzt_testnet/world/models.py` | `SellerRecord`+`SellerQuality`, `ForumUser/Thread/Post` dataclasses |
 | `src/lzt_testnet/world/stores.py` | `SellerStore`, `ForumStore` (dict + cursor list, mirrors `lot_store`) |
-| `src/lzt_testnet/world/builder.py` | `WorldBuilder(seed)` — populate roster + forum + seeded lots/dynamics |
+| `src/lzt_testnet/world/builder.py` | `WorldBuilder(seed)` — eager: SMALL seller roster (good+spam) + forum |
+| `src/lzt_testnet/world/materializer.py` | `Materializer` — lazy: generate+persist a lot on first fetch, query-keyed stable id; buy mutates LotStore (D11) |
 | `src/lzt_testnet/api/forum.py` | forum read routers (users/threads/posts), registered in `create_app` |
 
 ## New — L4 (scenarios / report / cli / docs / ci)

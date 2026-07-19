@@ -193,10 +193,34 @@ class ForumStore:    # users/threads/posts dicts + cursor lists
 
 class WorldBuilder:
     def __init__(self, seed: int, config: "WorldConfig") -> None: ...
-    def populate(self, *, sellers: SellerStore, forum: ForumStore, lots: "LotStore", ids: SeedController) -> None:
-        """Deterministically fill roster (good + spam sellers), spam-dominated lots, forum. Uses FakeGenerator + seeded rng."""
+    def populate(self, *, sellers: SellerStore, forum: ForumStore) -> None:
+        """EAGER but SMALL: fill the seller roster (good + spam) and the forum. Lots are NOT
+        pre-populated — they are lazily materialized (see Materializer, D11)."""
+
+
+class Materializer:
+    """Lazy lot inventory: generate+persist a lot the first time its page is fetched, serve the
+    persisted (mutable) record on refetch. Query-keyed identity so refetch is byte-stable (D11)."""
+
+    def __init__(self, seed: int, generator: FakeGenerator, lots: "LotStore",
+                 sellers: SellerStore, scenario: "ScenarioStore", config: "WorldConfig") -> None: ...
+
+    def stable_id(self, category: str, index: int) -> int:
+        """Deterministic id for item #index in `category` — a function of (seed, category, index),
+        NOT SeedController.next_id (which is call-order-dependent and would break refetch stability)."""
+
+    def page(self, *, category: str, cursor: int, limit: int) -> list["LotRecord"]:
+        """Materialize-on-fetch: for index in [cursor, cursor+limit), take the stable id; if absent from
+        `lots`, generate a seeded record (Random(f'{seed}:{category}:{index}'), seller assigned by
+        seeded quality) and persist it; skip ids already bought. Returns the persisted records — so a
+        buy between two fetches removes the item from the second page."""
+
+    def seller_of(self, item_id: int) -> SellerRecord:
+        """The (seeded) owning seller of a materialized lot."""
+
     def lot_check_fails(self, item_id: int) -> bool:
-        """True iff the lot's owning seller is SPAM — the deterministic bad-lot signal for BAD_LOT_CHECK."""
+        """True iff the lot's owning seller is SPAM — the deterministic BAD_LOT_CHECK / blacklist signal.
+        Works for a lazily-materialized lot (materializes it if not yet seen)."""
 
 @dataclass(frozen=True, slots=True)
 class WorldConfig:

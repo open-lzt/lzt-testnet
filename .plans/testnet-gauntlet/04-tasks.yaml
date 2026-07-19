@@ -95,14 +95,16 @@
   est_loc: 220
 
 - id: T10
-  title: "L3 WorldBuilder — seeded roster (good+spam), spam-dominated lots, forum, bad-lot check"
-  files: ["src/lzt_testnet/world/builder.py", "tests/world/test_builder.py"]
+  title: "L3 eager roster (WorldBuilder) + lazy lot Materializer (materialize-on-fetch, D11)"
+  files: ["src/lzt_testnet/world/builder.py", "src/lzt_testnet/world/materializer.py", "tests/world/test_builder.py", "tests/world/test_materializer.py"]
   depends_on: [T9]
   parallelizable: false
-  acceptance: "WorldBuilder(seed,config).populate fills a roster where spam_ratio holds (+-1 seller);
-    lot_check_fails(item_id) is True for every spam-seller lot and False for good-seller lots, deterministic
-    by seed; two builds with the same seed produce identical rosters. pytest test_builder green."
-  est_loc: 230
+  acceptance: "WorldBuilder(seed).populate fills a SMALL roster where spam_ratio holds (+-1 seller),
+    identical across two same-seed builds. Materializer.page(category,cursor,limit) materializes+persists
+    stable lots: two fetches of the same page return byte-identical records (query-keyed id, not next_id);
+    lot_check_fails(id) True for spam-seller lots, False for good; a buy of an id between two fetches drops
+    it from the second page. pytest test_builder + test_materializer green."
+  est_loc: 320
 
 - id: T11
   title: "L3 forum endpoints + wire world into create_app (armed only when a world/scenario is active)"

@@ -57,6 +57,17 @@ No `backup.sh/restore.sh` (in-memory, stateless — nothing to back up). The loa
 **soak-fuzz** run. Documented so W3 waves-cohesion doesn't flag a missing backup script. `unverified`
 (judgment call; user may want it stricter).
 
+## D11 — L3 lots are lazily materialized on fetch, not eagerly pre-populated
+Instead of `WorldBuilder` pre-generating all lots at startup, a `Materializer` generates+persists a lot
+the FIRST time its page is fetched, then serves the persisted (mutable) record on refetch. Identity is
+**query-keyed**: item #k in category C has a stable id `stable_id(C, k)` and a stable seeded record
+(`Random(f"{seed}:{category}:{index}")`) — NOT `next_id` (call-order-dependent), so a refetch is
+byte-stable. Buy mutates the existing `LotStore`/`ScenarioStore` (the id the client saw is buyable;
+refetch drops bought items). Seller quality is a seeded function of the id, so bad-lot check + blacklist
+work on the fly. Only the small SPAM/GOOD seller roster stays eager; lots are lazy. Supports infinite
+streaming lists without pre-generating millions. `decided-by-user`. `verified-by-code:src/lzt_testnet/api/stateful.py:193`
+(fast_buy already deletes the lot + marks bought — materialized lots plug straight in).
+
 ## D10 — Reuse polyfactory, do NOT add faker
 The brief said "faker"; testnet already uses **polyfactory** (which wraps Faker). Generate via the
 existing `FakeGenerator` + polyfactory seeding — one generation idiom, no new faker dep. Realistic forum

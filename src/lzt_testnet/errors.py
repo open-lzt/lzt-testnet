@@ -65,3 +65,13 @@ class PaymentFailed(TestnetError):
 
     def __post_init__(self) -> None:
         super().__init__()
+
+
+@dataclass
+class UnknownFaultError(TestnetError):
+    """An `X-Chaos` header named a fault that isn't a `FaultKind`. Maps to HTTP 400."""
+
+    name: str
+
+    def __post_init__(self) -> None:
+        super().__init__(self.name)

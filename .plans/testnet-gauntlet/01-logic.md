@@ -63,12 +63,16 @@ unified `chaos.domain.maybe_inject(ctx, store_view)`:
 - `delayed_settlement`: buy returns `pending`; a later `payments` poll flips it to settled after the
   seeded delay count.
 
-## L3 world — persistence & bad sellers
-`WorldBuilder(seed)` populates `SellerStore` + forum stores at app start (only when a world is armed).
-Roster has `SellerQuality.GOOD` and `SellerQuality.SPAM`; spam sellers own many cheap low-quality lots
-and their lots deterministically fail the check endpoint. Listing is dominated by spam (ratio from
-config → scenario). Forum users/threads/posts are consistent per seed. Infinite account listing is a
-seed-driven generator behind the existing cursor pagination.
+## L3 world — persistence & bad sellers (lazy materialization, D11)
+`WorldBuilder(seed)` eagerly builds only the SMALL `SellerStore` roster (`GOOD`/`SPAM`) + forum, at app
+start when a world is armed. **Lots are lazy:** a `Materializer` generates+persists a lot the first time
+its list page is fetched (query-keyed stable id `stable_id(category, index)` from a
+`Random(f"{seed}:{category}:{index}")` stream — NOT `next_id`, so refetch is byte-stable), then serves the
+persisted mutable record. Buy mutates the existing `LotStore`/`ScenarioStore`, so the exact id the client
+saw in the list is buyable and drops from the next fetch. Seller quality is a seeded function of the id →
+spam-seller lots deterministically fail the check endpoint (blacklist signal), computed on the fly.
+Listing is spam-dominated by the roster ratio. Infinite streaming = the cursor just keeps advancing the
+index; pages materialize on demand, never pre-generated. Forum users/threads/posts are consistent per seed.
 
 ## L4 scenarios, report, oracle
 - `ScenarioSpec` (yaml) = seed + intensity/profile weights + world config + endpoint targeting + oracle
