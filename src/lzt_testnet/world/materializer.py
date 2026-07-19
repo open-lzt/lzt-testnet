@@ -42,6 +42,7 @@ class Materializer:
         self._scenario = scenario
         self._config = config
         self._owner: dict[int, int] = {}  # materialized item_id -> owning seller_id
+        self._roster_cache: list[SellerRecord] | None = None  # static after WorldBuilder.populate
 
     def stable_id(self, category: str, index: int) -> int:
         """Deterministic 48-bit id for slot #index of `category` — a pure function of the seed.
@@ -85,8 +86,9 @@ class Materializer:
         return seller is not None and seller.quality is SellerQuality.SPAM
 
     def _roster(self) -> list[SellerRecord]:
-        records, _ = self._sellers.list(None, cursor=None, limit=10_000)
-        return records
+        if self._roster_cache is None:
+            self._roster_cache, _ = self._sellers.list(None, cursor=None, limit=10_000)
+        return self._roster_cache
 
     def _materialize(
         self, category: str, index: int, item_id: int, roster: list[SellerRecord]

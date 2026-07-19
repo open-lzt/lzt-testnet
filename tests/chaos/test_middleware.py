@@ -81,6 +81,13 @@ async def test_byzantine_missing_field_is_200_but_lies(off_client: AsyncClient) 
     assert "status" not in resp.json()  # the only field was dropped
 
 
+async def test_unknown_x_chaos_is_400_not_500(off_client: AsyncClient) -> None:
+    resp = await off_client.get("/testnet/health", headers={"X-Chaos": "totally_bogus_fault"})
+    assert resp.status_code == 400
+    assert resp.json()["error"] == "UnknownFault"
+    assert resp.json()["name"] == "totally_bogus_fault"
+
+
 def _fault_sequence(seed: int) -> list[int]:
     """Status codes over a fixed 12-request script under hostile chaos at `seed`."""
     import anyio

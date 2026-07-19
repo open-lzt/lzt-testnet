@@ -46,6 +46,15 @@ def test_seller_cursor_pagination_matches_lotstore() -> None:
     assert cursor3 is None  # partial page → no next cursor
 
 
+def test_seller_limit_zero_no_crash() -> None:
+    store = SellerStore()
+    for sid in range(1, 4):
+        store.add(_seller(sid))
+    page, cursor = store.list(None, cursor=None, limit=0)  # 0 == len([]) must not IndexError
+    assert page == []
+    assert cursor is None
+
+
 def test_forum_users_threads_posts() -> None:
     store = ForumStore()
     store.add_user(ForumUser(1, "alice", 100, _NOW))

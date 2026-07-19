@@ -12,6 +12,7 @@ import os
 from collections.abc import Sequence
 
 from lzt_testnet.chaos.profiles import Intensity
+from lzt_testnet.config import get_settings
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -39,6 +40,7 @@ def apply_env(args: argparse.Namespace) -> None:
 def main(argv: Sequence[str] | None = None, *, launch: bool = True) -> argparse.Namespace:
     args = build_parser().parse_args(argv)
     apply_env(args)
+    get_settings.cache_clear()  # env just changed → drop the cached Settings for the next reader
     if launch:
         _launch(args)
     return args
@@ -47,9 +49,6 @@ def main(argv: Sequence[str] | None = None, *, launch: bool = True) -> argparse.
 def _launch(args: argparse.Namespace) -> None:  # pragma: no cover - binds a real port
     import uvicorn
 
-    from lzt_testnet.config import get_settings
-
-    get_settings.cache_clear()  # env may have changed since first access
     settings = get_settings()
     uvicorn.run(
         "lzt_testnet.api.app:create_app",

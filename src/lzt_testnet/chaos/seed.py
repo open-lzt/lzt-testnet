@@ -4,6 +4,10 @@ A single ``SeedController`` is built once per app and put on ``app.state.seed``.
 read randomness only from ``stream(seq)`` (a per-request child RNG), so replaying request ``seq``
 never depends on how many requests came before it. ``next_id`` replaces the module-global
 ``itertools.count`` in ``api/stateful.py`` so id sequences are a function of the seed, not history.
+
+Determinism assumes requests reach the middleware in a fixed ORDER (``next_seq`` is a plain
+counter). Every driver today awaits requests one at a time; a concurrent load driver would need its
+own ordering guarantee before the "same seed ⇒ same sequence" promise holds.
 """
 
 from __future__ import annotations

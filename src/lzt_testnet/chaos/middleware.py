@@ -9,10 +9,12 @@ response mid-flight, which the request/response middleware API cannot express.
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import TYPE_CHECKING
 
 from lzt_testnet.chaos.faults import POST_RESPONSE, PRE_RESPONSE, Fault, FaultContext, FaultKind
 from lzt_testnet.chaos.render import apply_post_response, apply_pre_response
+from lzt_testnet.errors import UnknownFaultError
 
 if TYPE_CHECKING:
     from starlette.types import ASGIApp, Message, Receive, Scope, Send
@@ -61,6 +63,22 @@ def _with_content_length(
     return out
 
 
+def _delay_s(fault: Fault) -> float:
+    """The SLOW/TIMEOUT sleep from ``params`` (values are typed ``object``); default 50ms."""
+    value = fault.params.get("delay_s", 0.05)
+    return float(value) if isinstance(value, (int, float)) else 0.05
+
+
+async def _send_json(send: Send, status: int, payload: dict[str, object]) -> None:
+    body = json.dumps(payload).encode()
+    headers = [
+        (b"content-type", b"application/json"),
+        (b"content-length", str(len(body)).encode()),
+    ]
+    await send({"type": "http.response.start", "status": status, "headers": headers})
+    await send({"type": "http.response.body", "body": body})
+
+
 class FaultInjectionMiddleware:
     """Decides one fault per request (deterministic by seq) and applies it at the ASGI layer."""
 
@@ -90,7 +108,12 @@ class FaultInjectionMiddleware:
             endpoint=_endpoint_key(scope["path"]),
             rng=seed.stream(seq),
         )
-        fault = planner.decide(ctx, x_chaos=x_chaos, legacy=None)
+        try:
+            fault = planner.decide(ctx, x_chaos=x_chaos)
+        except UnknownFaultError as exc:
+            # The middleware sits outside Starlette's exception handlers, so map it here.
+            await _send_json(send, 400, {"error": "UnknownFault", "name": exc.name})
+            return
         if fault is None:
             await self._app(scope, receive, send)
             return
@@ -100,8 +123,12 @@ class FaultInjectionMiddleware:
             recorder.record(ctx, fault)
 
         if fault.kind is FaultKind.SLOW:
-            await asyncio.sleep(float(fault.params.get("delay_s", 0.05)))  # type: ignore[arg-type]
+            await asyncio.sleep(_delay_s(fault))
             await self._app(scope, receive, send)
+            return
+        if fault.kind is FaultKind.TIMEOUT:
+            await asyncio.sleep(_delay_s(fault))  # hang past the client's timeout, then abort
+            await self._send_pre_response(fault, send)
             return
         if fault.kind in PRE_RESPONSE:
             await self._send_pre_response(fault, send)

@@ -20,8 +20,8 @@ def _page[T](
     ordered = sorted(records, key=key)
     if cursor is not None:
         ordered = [r for r in ordered if key(r) > cursor]
-    page = ordered[:limit]
-    next_cursor = key(page[-1]) if len(page) == limit else None
+    page = ordered[:limit] if limit > 0 else []
+    next_cursor = key(page[-1]) if page and len(page) == limit else None
     return page, next_cursor
 
 

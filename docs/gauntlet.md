@@ -78,3 +78,9 @@ real bug the happy-path tests never would.
 ```bash
 ./scripts/gauntlet-soak.sh nginx-down 200 502   # scenario, requests, seed → faults/sec baseline
 ```
+
+## Note — deterministic ids
+
+Lot/payment ids are seed-scoped **per app instance** (they start from `1` for each `create_app()`),
+not process-global. This is intentional (reproducible ids per run); a single long-lived server is
+unaffected, and every test gets a fresh, deterministic id sequence.

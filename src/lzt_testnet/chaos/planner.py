@@ -1,8 +1,8 @@
-"""The arming decision: X-Chaos header → legacy X-Testnet-Force-Error → seeded profile roll.
+"""The arming decision: X-Chaos header → seeded profile roll.
 
 `decide` is pure given `(profile, ctx.rng)` — no wall-clock, no global random — so the same
-seed + seq + profile always yields the same Fault. This unifies the two duplicated
-`_FORCE_ERROR_MAP`s (TD-1): the legacy header names now resolve into the one FaultKind registry.
+seed + seq + profile always yields the same Fault. (The legacy `X-Testnet-Force-Error` header is
+handled separately and deduplicated in `chaos/legacy.py`, not here.)
 """
 
 from __future__ import annotations
@@ -10,15 +10,6 @@ from __future__ import annotations
 from lzt_testnet.chaos.faults import Fault, FaultContext, FaultKind
 from lzt_testnet.chaos.profiles import ChaosProfile
 from lzt_testnet.errors import UnknownFaultError
-
-# Legacy X-Testnet-Force-Error names → FaultKind (absorbs catch_all + stateful _FORCE_ERROR_MAPs).
-_LEGACY_NAME_MAP: dict[str, FaultKind] = {
-    "rate_limited": FaultKind.RATE_LIMITED_429,
-    "auth_failed": FaultKind.AUTH_DROP_401,
-    "transport_error": FaultKind.HTTP_500,
-    "payment_failed": FaultKind.CHARGE_THEN_FAIL,
-    "not_found": FaultKind.ALREADY_SOLD,
-}
 
 
 def parse_x_chaos(value: str) -> tuple[FaultKind, str | None]:
@@ -59,15 +50,12 @@ class FaultPlanner:
         """True when a global profile rolls faults; drives the middleware fast-path."""
         return self._profile is not None
 
-    def decide(self, ctx: FaultContext, *, x_chaos: str | None, legacy: str | None) -> Fault | None:
+    def decide(self, ctx: FaultContext, *, x_chaos: str | None) -> Fault | None:
         if x_chaos is not None:
             kind, endpoint = parse_x_chaos(x_chaos)
             if endpoint is not None and endpoint != "*" and endpoint != ctx.endpoint:
                 return None  # header targets a different endpoint ("*" and no-@ both match all)
             return _fault(kind)
-        if legacy is not None:
-            legacy_kind = _LEGACY_NAME_MAP.get(legacy)
-            return _fault(legacy_kind) if legacy_kind is not None else None
         if self._profile is not None:
             return self._roll(ctx, self._profile)
         return None

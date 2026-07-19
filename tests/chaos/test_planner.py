@@ -1,4 +1,4 @@
-"""Arming precedence + legacy unification + deterministic profile roll."""
+"""Arming precedence (X-Chaos → profile roll) + deterministic profile roll."""
 
 from __future__ import annotations
 
@@ -26,40 +26,25 @@ def test_parse_x_chaos() -> None:
 
 def test_x_chaos_forces_exactly_that_fault() -> None:
     planner = FaultPlanner(None)  # no profile — proves X-Chaos wins even with chaos otherwise off
-    fault = planner.decide(_ctx(), x_chaos="rate_limited_429", legacy=None)
+    fault = planner.decide(_ctx(), x_chaos="rate_limited_429")
     assert fault is not None and fault.kind is FaultKind.RATE_LIMITED_429
 
 
 def test_x_chaos_endpoint_filter() -> None:
     planner = FaultPlanner(None)
-    assert planner.decide(_ctx(endpoint="list"), x_chaos="http_500@buy", legacy=None) is None
-    hit = planner.decide(_ctx(endpoint="buy"), x_chaos="http_500@buy", legacy=None)
+    assert planner.decide(_ctx(endpoint="list"), x_chaos="http_500@buy") is None
+    hit = planner.decide(_ctx(endpoint="buy"), x_chaos="http_500@buy")
     assert hit is not None and hit.kind is FaultKind.HTTP_500
 
 
-@pytest.mark.parametrize(
-    ("legacy", "expected"),
-    [
-        ("rate_limited", FaultKind.RATE_LIMITED_429),
-        ("auth_failed", FaultKind.AUTH_DROP_401),
-        ("transport_error", FaultKind.HTTP_500),
-        ("payment_failed", FaultKind.CHARGE_THEN_FAIL),
-        ("not_found", FaultKind.ALREADY_SOLD),
-    ],
-)
-def test_legacy_force_error_names_unified(legacy: str, expected: FaultKind) -> None:
-    fault = FaultPlanner(None).decide(_ctx(), x_chaos=None, legacy=legacy)
-    assert fault is not None and fault.kind is expected
-
-
 def test_no_arming_is_clean() -> None:
-    assert FaultPlanner(None).decide(_ctx(), x_chaos=None, legacy=None) is None
+    assert FaultPlanner(None).decide(_ctx(), x_chaos=None) is None
 
 
 def test_profile_roll_is_deterministic_by_seed_and_seq() -> None:
     planner = FaultPlanner(profile_for(Intensity.HOSTILE))
-    a = planner.decide(_ctx(seq=5), x_chaos=None, legacy=None)
-    b = planner.decide(_ctx(seq=5), x_chaos=None, legacy=None)  # same seed+seq -> same decision
+    a = planner.decide(_ctx(seq=5), x_chaos=None)
+    b = planner.decide(_ctx(seq=5), x_chaos=None)  # same seed+seq -> same decision
     assert (a is None) == (b is None)
     if a is not None and b is not None:
         assert a.kind is b.kind

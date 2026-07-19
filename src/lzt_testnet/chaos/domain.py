@@ -44,6 +44,9 @@ def maybe_inject(fault: Fault | None, view: DomainView, counters: dict[str, int]
         return DomainOutcome.PROCEED
     kind = fault.kind
     if kind in (FaultKind.ACCOUNT_INVALID, FaultKind.BAD_LOT_CHECK):
+        # A generic per-buy "the account/lot is bad" outcome, armed at random. The DETERMINISTIC
+        # spam-seller blacklist is a separate world mechanism — Materializer.lot_check_fails, served
+        # by GET /testnet/world/lots/{id}/check — not this roll.
         return DomainOutcome.FAIL_INVALID
     if kind is FaultKind.ALREADY_SOLD:
         # Deterministic race: the first buyer of this item wins, every later one is sold out.

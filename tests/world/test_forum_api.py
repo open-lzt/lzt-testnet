@@ -59,6 +59,12 @@ async def test_world_lots_stream_stable(world_client: AsyncClient) -> None:
     assert first["next_cursor"] == 5
 
 
+async def test_forum_limit_zero_no_crash(world_client: AsyncClient) -> None:
+    resp = await world_client.get("/testnet/world/forum/users", params={"limit": 0})
+    assert resp.status_code == 200  # limit=0 must not IndexError to a 500
+    assert resp.json() == {"items": [], "next_cursor": None}
+
+
 async def test_no_world_returns_empty() -> None:
     # default app (chaos OFF) has no world → forum routes are empty, existing suite unaffected.
     transport = ASGITransport(app=create_app())
