@@ -1,0 +1,35 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Sync dependencies
+        run: uv sync --extra dev
+
+      - name: Ruff (format + lint)
+        run: |
+          uv run ruff format --check .
+          uv run ruff check .
+
+      - name: Mypy (strict)
+        run: uv run mypy src
+
+      - name: Tests
+        run: uv run pytest -q
+
+      - name: Seeded chaos smoke
+        run: bash scripts/gauntlet-soak.sh nginx-down 100 502

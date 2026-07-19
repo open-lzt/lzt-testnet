@@ -21,7 +21,9 @@ if TYPE_CHECKING:
     from lzt_testnet.chaos.seed import SeedController
 
 _CHAOS_HEADER = b"x-chaos"
-CHAOS_FAULT_SCOPE_KEY = "lzt_chaos"  # where a decided DOMAIN fault is stashed for the in-handler injector
+CHAOS_FAULT_SCOPE_KEY = (
+    "lzt_chaos"  # where a decided DOMAIN fault is stashed for the in-handler injector
+)
 
 
 class ChaosConnectionDrop(Exception):
@@ -46,11 +48,13 @@ def _endpoint_key(path: str) -> str:
 def _header(scope: Scope, name: bytes) -> str | None:
     for key, value in scope.get("headers", []):
         if key == name:
-            return value.decode("latin-1")
+            return str(value.decode("latin-1"))
     return None
 
 
-def _with_content_length(headers: list[tuple[bytes, bytes]], body: bytes) -> list[tuple[bytes, bytes]]:
+def _with_content_length(
+    headers: list[tuple[bytes, bytes]], body: bytes
+) -> list[tuple[bytes, bytes]]:
     """Recompute Content-Length so a mutated (shorter/longer) body is a valid response."""
     out = [(k, v) for (k, v) in headers if k.lower() != b"content-length"]
     out.append((b"content-length", str(len(body)).encode()))
@@ -134,7 +138,9 @@ class FaultInjectionMiddleware:
                 body += message.get("body", b"")
                 if message.get("more_body", False):
                     return
-                new_status, new_headers, new_body = apply_post_response(fault, status, headers, body)
+                new_status, new_headers, new_body = apply_post_response(
+                    fault, status, headers, body
+                )
                 await send(
                     {
                         "type": "http.response.start",

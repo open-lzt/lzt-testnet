@@ -1,0 +1,11 @@
+name: seller-spam-flood
+seed: 13
+intensity: calm
+fault_probability: 0.05
+# The transport is mostly fine; the danger is a roster flooded with spam sellers whose
+# lots fail verification. Tests the client's blacklist / bad-lot filtering.
+world:
+  roster_size: 20
+  spam_ratio: 0.6
+  lots_per_spam_seller: 80
+oracle: true

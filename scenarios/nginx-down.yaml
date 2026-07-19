@@ -1,0 +1,10 @@
+name: nginx-down
+seed: 502
+intensity: hostile
+fault_probability: 0.8
+# The upstream is down: nearly every request is a raw nginx 502 HTML page, not JSON.
+# Tests that the client detects "this isn't an API response" instead of parsing garbage.
+weights:
+  http_502_nginx: 4.0
+  http_503: 1.0
+  connection_drop: 1.0

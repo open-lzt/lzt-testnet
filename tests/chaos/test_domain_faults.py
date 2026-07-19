@@ -1,6 +1,6 @@
 """T7 — L2 domain faults: account_invalid, already_sold, charge_then_fail, delayed_settlement.
 
-Domain faults are armed with the `X-Chaos: <kind>@buy` header (deterministic, per unit-test control).
+Domain faults are armed with the `X-Chaos: <kind>@buy` header (deterministic, per-test control).
 Also asserts item/payment ids come from the seed engine, not a module-global counter (TD-2/D6).
 """
 

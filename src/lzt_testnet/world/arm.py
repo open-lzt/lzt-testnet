@@ -30,7 +30,7 @@ def build_world(
     scenario: ScenarioStore,
     generator: FakeGenerator,
 ) -> WorldBundle:
-    """Populate a fresh roster + forum and wire a Materializer over the app's lot/scenario stores."""
+    """Populate a fresh roster + forum and wire a Materializer over the app's stores."""
     sellers, forum = SellerStore(), ForumStore()
     WorldBuilder(seed, config).populate(sellers=sellers, forum=forum)
     materializer = Materializer(seed, generator, lots, sellers, scenario, config)

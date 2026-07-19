@@ -11,13 +11,18 @@ from collections.abc import Awaitable, Callable
 from httpx import ASGITransport, AsyncClient, Response
 
 from lzt_testnet.api.app import create_app
+from lzt_testnet.chaos.faults import FaultKind
 from lzt_testnet.chaos.planner import FaultPlanner
-from lzt_testnet.chaos.profiles import Intensity, profile_for
+from lzt_testnet.chaos.profiles import ChaosProfile, Intensity, profile_for
+from lzt_testnet.chaos.report import GauntletRecorder, GauntletReport
+from lzt_testnet.chaos.scenario import load_scenario
 from lzt_testnet.chaos.seed import SeedController
 from lzt_testnet.world.arm import build_world
 from lzt_testnet.world.builder import WorldConfig
 
 _TRANSIENT = frozenset({429, 500, 502, 503, 504})
+
+Script = Callable[[AsyncClient], Awaitable[None]]
 
 
 def chaos_client(*, mode: Intensity = Intensity.OFF, seed: int = 0) -> AsyncClient:
@@ -29,6 +34,7 @@ def chaos_client(*, mode: Intensity = Intensity.OFF, seed: int = 0) -> AsyncClie
     controller.seed_generation()
     app.state.seed = controller
     app.state.fault_planner = FaultPlanner(profile_for(mode))
+    app.state.recorder = GauntletRecorder(seed)
     if mode is not Intensity.OFF:
         app.state.world = build_world(
             seed=seed,
@@ -66,8 +72,78 @@ async def assert_idempotent(
     return resp
 
 
-async def assert_blacklists(client: AsyncClient, *, category: str = "steam", limit: int = 20) -> None:
-    """Assert spam-seller lots appear in the world listing AND deterministically fail their check."""
+def _arm(app, *, profile: ChaosProfile | None, seed: int, world_config: WorldConfig | None) -> None:
+    controller = SeedController(seed)
+    controller.seed_generation()
+    app.state.seed = controller
+    app.state.fault_planner = FaultPlanner(profile)
+    app.state.recorder = GauntletRecorder(seed)
+    if world_config is not None:
+        app.state.world = build_world(
+            seed=seed,
+            config=world_config,
+            lots=app.state.lot_store,
+            scenario=app.state.scenario_store,
+            generator=app.state.fake_generator,
+        )
+
+
+async def assert_survives(
+    scenario: str, script: Script, *, seed: int | None = None
+) -> GauntletReport:
+    """Run `script` under a named scenario; return its Gauntlet scorecard. The script completing
+    without the harness raising IS survival (faulted responses expected, a crashed app is not)."""
+    spec = load_scenario(scenario)
+    app = create_app()
+    _arm(
+        app,
+        profile=spec.to_profile(),
+        seed=seed if seed is not None else spec.seed,
+        world_config=spec.world,
+    )
+    transport = ASGITransport(app=app, raise_app_exceptions=False)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        await script(client)
+    return app.state.recorder.report()
+
+
+async def _terminal_purchases(
+    *, profile: ChaosProfile | None, script: Script, seed: int, token: str
+) -> list[int]:
+    app = create_app()
+    _arm(app, profile=profile, seed=seed, world_config=None)
+    transport = ASGITransport(app=app, raise_app_exceptions=False)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        await script(client)
+        payments = await client.get(
+            "/testnet/stateful/payments", headers={"Authorization": f"Bearer {token}"}
+        )
+    return sorted(p["item_id"] for p in payments.json())
+
+
+async def run_oracle(
+    script: Script,
+    *,
+    buy_fault: FaultKind = FaultKind.RETRY_STORM,
+    seed: int = 0,
+    token: str = "oracle",
+) -> bool:
+    """Differential oracle: run `script` clean and under chaos; True iff the terminal business
+    state (purchases) matches — i.e. the client reaches the same outcome despite the faults."""
+    clean = await _terminal_purchases(profile=None, script=script, seed=seed, token=token)
+    chaotic_profile = ChaosProfile(
+        "oracle", weights={}, per_endpoint={"buy": {buy_fault: 1.0}}, fault_probability=1.0
+    )
+    chaotic = await _terminal_purchases(
+        profile=chaotic_profile, script=script, seed=seed, token=token
+    )
+    return clean == chaotic
+
+
+async def assert_blacklists(
+    client: AsyncClient, *, category: str = "steam", limit: int = 20
+) -> None:
+    """Assert spam-seller lots appear in the listing AND deterministically fail their check."""
     listed = await client.get("/testnet/world/lots", params={"category": category, "limit": limit})
     items = listed.json()["items"]
     assert items, "world listing was empty"

@@ -1,0 +1,14 @@
+name: pagination-hell
+seed: 99
+intensity: flaky
+fault_probability: 0.4
+# Listing endpoints lie: dropped fields, truncated bodies, malformed JSON mid-page.
+# Tests that a paginating client survives corrupt pages without losing or duplicating items.
+weights:
+  slow: 1.0
+per_endpoint:
+  list_lots:
+    byzantine_missing_field: 2.0
+    truncated_body: 1.5
+    malformed_json: 1.0
+    byzantine_wrong_type: 1.0

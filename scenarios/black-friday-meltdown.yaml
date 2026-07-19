@@ -1,0 +1,17 @@
+name: black-friday-meltdown
+seed: 42
+intensity: hostile
+fault_probability: 0.6
+# Everything at once — the market buckling under peak load.
+weights:
+  http_500: 1.0
+  http_502_nginx: 1.5
+  http_503: 1.0
+  rate_limited_429: 2.0
+  slow: 1.5
+  byzantine_missing_field: 0.8
+  connection_drop: 0.5
+world:
+  roster_size: 16
+  spam_ratio: 0.4
+oracle: true

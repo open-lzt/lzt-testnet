@@ -7,12 +7,14 @@ from fastapi import FastAPI
 from lzt_testnet.api.catch_all import router as catch_all_router
 from lzt_testnet.api.control import router as control_router
 from lzt_testnet.api.error_handlers import register_error_handlers
+from lzt_testnet.api.forum import router as forum_router
 from lzt_testnet.api.stateful import router as stateful_router
 from lzt_testnet.catalog.route_table import build_route_table
-from lzt_testnet.api.forum import router as forum_router
 from lzt_testnet.chaos.middleware import FaultInjectionMiddleware
 from lzt_testnet.chaos.planner import FaultPlanner
-from lzt_testnet.chaos.profiles import Intensity, profile_for
+from lzt_testnet.chaos.profiles import ChaosProfile, Intensity, profile_for
+from lzt_testnet.chaos.report import GauntletRecorder
+from lzt_testnet.chaos.scenario import load_scenario
 from lzt_testnet.chaos.seed import SeedController
 from lzt_testnet.config import get_settings
 from lzt_testnet.fake.generator import FakeGenerator
@@ -35,8 +37,21 @@ def create_app() -> FastAPI:
     app = FastAPI()
     settings = get_settings()
 
+    # A named scenario (if set) overrides the bare intensity/seed; otherwise fall back to the
+    # intensity profile. A world is armed for a scenario that declares one, or for any non-OFF mode.
+    scenario = load_scenario(settings.chaos_scenario) if settings.chaos_scenario else None
+    profile: ChaosProfile | None
+    if scenario is not None:
+        profile = scenario.to_profile()
+        seed_value = settings.chaos_seed or scenario.seed
+        world_config: WorldConfig | None = scenario.world
+    else:
+        profile = profile_for(settings.chaos_mode)
+        seed_value = settings.chaos_seed
+        world_config = WorldConfig() if settings.chaos_mode is not Intensity.OFF else None
+
     # The determinism spine: one seed fixes every fault decision and every generated datum (D1).
-    seed = SeedController(settings.chaos_seed)
+    seed = SeedController(seed_value)
     seed.seed_generation()
 
     app.state.route_table = route_table
@@ -46,16 +61,17 @@ def create_app() -> FastAPI:
     app.state.scenario_store = ScenarioStore()
     app.state.settings = settings
     app.state.seed = seed
-    app.state.fault_planner = FaultPlanner(profile_for(settings.chaos_mode))
+    app.state.fault_planner = FaultPlanner(profile)
     app.state.chaos_counters = {}  # seed-scoped per-item ticks for retry_storm / delayed_settlement
+    app.state.recorder = GauntletRecorder(seed_value)
 
-    # The stateful world (roster + forum + lazy lots) is armed only when chaos is active, so the
-    # default mock stays clean and the pre-existing suite is unaffected (D2).
+    # The stateful world (roster + forum + lazy lots) stays off by default so the mock is clean
+    # and the pre-existing suite is unaffected (D2).
     world: WorldBundle | None = None
-    if settings.chaos_mode is not Intensity.OFF:
+    if world_config is not None:
         world = build_world(
-            seed=settings.chaos_seed,
-            config=WorldConfig(),
+            seed=seed_value,
+            config=world_config,
             lots=app.state.lot_store,
             scenario=app.state.scenario_store,
             generator=app.state.fake_generator,

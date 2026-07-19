@@ -1,0 +1,10 @@
+name: auth-expiry-storm
+seed: 7
+intensity: flaky
+fault_probability: 0.5
+# Tokens keep "expiring" mid-run — does the client re-auth and resume, or crash?
+weights:
+  auth_drop_401: 3.0
+  rate_limited_429: 1.0
+  slow: 0.5
+oracle: true

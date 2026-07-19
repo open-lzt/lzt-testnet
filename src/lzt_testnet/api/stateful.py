@@ -221,7 +221,7 @@ async def fast_buy(
     lot_store.delete(item_id)
     scenario_store.mark_bought(item_id)
     if outcome is DomainOutcome.CHARGE_THEN_FAIL:
-        raise errors.PaymentFailed()  # charged (lot gone) yet no PaymentRecord — a reconciliation trap
+        raise errors.PaymentFailed()  # charged (lot gone) but no PaymentRecord — a reconcile trap
 
     payment_store.append(
         PaymentRecord(

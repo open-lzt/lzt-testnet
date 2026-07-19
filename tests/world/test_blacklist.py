@@ -42,9 +42,13 @@ async def test_check_is_stable_across_pages(world_client: AsyncClient) -> None:
     invalid_ids = {
         lot["item_id"]
         for lot in listed
-        if not (await world_client.get(f"/testnet/world/lots/{lot['item_id']}/check")).json()["valid"]
+        if not (await world_client.get(f"/testnet/world/lots/{lot['item_id']}/check")).json()[
+            "valid"
+        ]
     }
     # re-list the same page → the same lots remain blacklisted
     for lot in listed:
-        valid = (await world_client.get(f"/testnet/world/lots/{lot['item_id']}/check")).json()["valid"]
+        valid = (await world_client.get(f"/testnet/world/lots/{lot['item_id']}/check")).json()[
+            "valid"
+        ]
         assert (lot["item_id"] in invalid_ids) is (not valid)

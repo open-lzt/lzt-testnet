@@ -40,3 +40,17 @@ names the exact call).
 - 2 `unverified` decisions upgraded to `verified-by-code` (D4, and R3's mechanism pinned).
 - Remaining `unverified` after W3.5: D9 (release-ready floor adaptation — judgment call, user may override)
   and the R5/R1 open-question defaults (documented, non-blocking).
+
+## Build outcome (all 16 tasks shipped + tested)
+- **L1** (T1-T4): seed engine, fault taxonomy, profiles, planner, render — 24 tests.
+- **L2** (T5-T8): pure-ASGI `FaultInjectionMiddleware`, domain faults, seed-scoped ids (TD-2 closed),
+  legacy `X-Testnet-Force-Error` unified into one `chaos/legacy.py` (TD-1 closed), idempotency probe.
+- **L3** (T9-T11): world models/stores, `WorldBuilder`, lazy `Materializer` (D11 — query-keyed stable
+  ids, materialize-on-fetch, byte-stable refetch), forum endpoints, blacklist.
+- **L4** (T12-T16): `ScenarioSpec` + 5 shipped YAML scenarios, `GauntletRecorder`/scorecard,
+  differential-oracle (RED-GREEN: naive client → `run_oracle` False), CLI + soak, docs + CI.
+- **Gates**: ruff clean, `mypy --strict src` clean (38 files), full suite green. OFF = zero drift
+  (existing 17-file suite unchanged, confirmed by a full run with the middleware installed).
+- **Fixes found by the tests**: tuple-seed `Random` bug; planner type reassignment; a create_app
+  contract change caught by 3 bare-app tests (fixed by graceful `_seed`/`_domain_outcome` fallback,
+  no test edits); an env-leak in `test_cli` poisoning the `get_settings` cache (teardown + cache_clear).

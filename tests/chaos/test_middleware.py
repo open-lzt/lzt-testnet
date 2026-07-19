@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 
-import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
@@ -56,9 +55,7 @@ async def test_x_chaos_502_nginx_html(off_client: AsyncClient) -> None:
 async def test_x_chaos_targets_only_matching_endpoint() -> None:
     async with _client(_armed_app(mode=Intensity.OFF)) as ac:
         # header targets `buy`, but we hit list_lots → passes through untouched
-        resp = await ac.get(
-            "/testnet/stateful/lots", headers={**_AUTH, "X-Chaos": "http_500@buy"}
-        )
+        resp = await ac.get("/testnet/stateful/lots", headers={**_AUTH, "X-Chaos": "http_500@buy"})
     assert resp.status_code == 200
 
 
@@ -79,9 +76,7 @@ async def test_connection_drop_truncates_body(off_client: AsyncClient) -> None:
 
 
 async def test_byzantine_missing_field_is_200_but_lies(off_client: AsyncClient) -> None:
-    resp = await off_client.get(
-        "/testnet/health", headers={"X-Chaos": "byzantine_missing_field"}
-    )
+    resp = await off_client.get("/testnet/health", headers={"X-Chaos": "byzantine_missing_field"})
     assert resp.status_code == 200
     assert "status" not in resp.json()  # the only field was dropped
 

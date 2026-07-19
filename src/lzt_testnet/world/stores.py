@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TypeVar
 
 from lzt_testnet.world.models import (
     ForumPost,
@@ -13,11 +12,11 @@ from lzt_testnet.world.models import (
     SellerRecord,
 )
 
-_T = TypeVar("_T")
 
-
-def _page(records: list[_T], key: Callable[[_T], int], cursor: int | None, limit: int) -> tuple[list[_T], int | None]:
-    """Cursor page over `records`: sort by id, take ids > cursor, next_cursor only on a full page."""
+def _page[T](
+    records: list[T], key: Callable[[T], int], cursor: int | None, limit: int
+) -> tuple[list[T], int | None]:
+    """Cursor page: sort by id, take ids > cursor, next_cursor only on a full page."""
     ordered = sorted(records, key=key)
     if cursor is not None:
         ordered = [r for r in ordered if key(r) > cursor]

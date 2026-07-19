@@ -75,3 +75,13 @@ class UnknownFaultError(TestnetError):
 
     def __post_init__(self) -> None:
         super().__init__(self.name)
+
+
+@dataclass
+class ScenarioError(TestnetError):
+    """A scenario YAML is missing, malformed, or fails schema validation."""
+
+    detail: str
+
+    def __post_init__(self) -> None:
+        super().__init__(self.detail)

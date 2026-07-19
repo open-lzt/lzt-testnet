@@ -54,16 +54,24 @@ def maybe_inject(fault: Fault | None, view: DomainView, counters: dict[str, int]
     if kind is FaultKind.CHARGE_THEN_FAIL:
         return DomainOutcome.CHARGE_THEN_FAIL
     if kind is FaultKind.RETRY_STORM:
-        limit = int(fault.params.get("transient_count", 3))  # type: ignore[arg-type]
+        limit = _int_param(fault.params, "transient_count", 3)
         return _tick(counters, f"retry:{view.item_id}", limit, DomainOutcome.TRANSIENT_RETRY)
     if kind is FaultKind.DELAYED_SETTLEMENT:
-        limit = int(fault.params.get("delay_ticks", 3))  # type: ignore[arg-type]
+        limit = _int_param(fault.params, "delay_ticks", 3)
         return _tick(counters, f"settle:{view.item_id}", limit, DomainOutcome.PENDING)
     return DomainOutcome.PROCEED
 
 
-def _tick(counters: dict[str, int], key: str, limit: int, transient: DomainOutcome) -> DomainOutcome:
-    """Return `transient` for the first `limit` calls under `key`, then PROCEED. Advances the tick."""
+def _int_param(params: dict[str, object], key: str, default: int) -> int:
+    """Read an int shaping param (Fault.params values are ``object``); else the default."""
+    value = params.get(key, default)
+    return value if isinstance(value, int) else default
+
+
+def _tick(
+    counters: dict[str, int], key: str, limit: int, transient: DomainOutcome
+) -> DomainOutcome:
+    """First `limit` calls under `key` return `transient`, then PROCEED. Advances the tick."""
     seen = counters.get(key, 0)
     counters[key] = seen + 1
     return transient if seen < limit else DomainOutcome.PROCEED
