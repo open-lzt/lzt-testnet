@@ -60,20 +60,20 @@ picture).
 
 ### 1. Point a real `pylzt.Client` at it (the intended integration path)
 
-Use this in `lzt-flow`/`lzt-eventus` dev/CI so their own test suites exercise real
-`pylzt` code without a live token:
+In pytest — one line via the `testnet_client` fixture (the pytest plugin ships with
+`lzt-testnet`; the mock runs in-process over ASGI, no socket):
 
 ```python
-from pylzt import Client
-from pylzt.config import ClientConfig
+async def test_my_autobuy(testnet_client):   # a pylzt.Client already aimed at the mock
+    lot = await testnet_client.market.get_lot(item_id=123)
+```
 
-client = Client(
-    tokens=["fake-token"],
-    config=ClientConfig(
-        base_url="http://127.0.0.1:8765",
-        forum_base_url="http://127.0.0.1:8765",
-    ),
-)
+Outside pytest — `ClientConfig.for_testnet()` replaces the hand-written `base_url` wiring:
+
+```python
+from pylzt import Client, ClientConfig
+
+client = Client.from_token("fake-token", config=ClientConfig.for_testnet())
 lot = await client.market.get_lot(item_id=123)
 ```
 
