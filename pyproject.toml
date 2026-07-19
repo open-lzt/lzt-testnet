@@ -57,3 +57,7 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+# Repo root on sys.path so tests can `from tests.helpers.gauntlet import ...` (tests/ is a
+# namespace package — no __init__.py); importlib mode keeps it off the sys.path-prepend games.
+pythonpath = ["."]
+addopts = "--import-mode=importlib"
