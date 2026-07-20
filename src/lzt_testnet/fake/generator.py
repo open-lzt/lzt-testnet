@@ -8,7 +8,6 @@ from typing import Any, cast
 from polyfactory.factories.pydantic_factory import ModelFactory
 from pydantic import BaseModel
 
-
 # polyfactory fills a list field with exactly one element unless told otherwise, so every catalog
 # page came back holding a single lot — enough to prove a route answers, useless for exercising a
 # caller that pages, sorts, or takes N. A handful of items per page is what a real listing looks
