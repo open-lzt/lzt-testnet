@@ -132,4 +132,9 @@ def test_method_roundtrip_over_real_socket(
     if returning is None:
         assert response.json() == {}
     else:
-        returning.from_raw(response.json())
+        # Validate the way the CLIENT does — `BaseMethod.parse_response` digs `__unwrap__` out
+        # of the body first. Asserting the raw body against the model instead demands a flat
+        # shape the real API never sends (see tests/test_unwrap_envelope.py).
+        raw = response.json()
+        unwrap = matched_entry.method_cls.__unwrap__
+        returning.from_raw(raw[unwrap] if unwrap else raw)

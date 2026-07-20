@@ -70,4 +70,11 @@ async def catch_all(
 
     fake_generator = cast("FakeGenerator", request.app.state.fake_generator)
     instance = fake_generator.build(entry.returning, overrides=overrides)
-    return apply_query_filters(instance.model_dump(mode="json"), request.query_params)
+    body = apply_query_filters(instance.model_dump(mode="json"), request.query_params)
+
+    # 34 of pylzt's ~212 methods declare `__unwrap__` — the single key the real API nests the
+    # payload under (`GET /me` answers `{"user": {...}}`, not the user flat). Serving those flat
+    # made the client raise a ValidationError for the RETURN type on every one of them, which
+    # reads as "the model is wrong" rather than "the mock skipped the envelope".
+    unwrap = entry.method_cls.__unwrap__
+    return {unwrap: body} if unwrap else body

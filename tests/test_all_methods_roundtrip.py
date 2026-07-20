@@ -85,4 +85,10 @@ async def test_method_roundtrip(method_cls: type) -> None:  # type: ignore[type-
     if returning is None:
         assert response.json() == {}
     else:
-        returning.from_raw(response.json())
+        # Validate the way the CLIENT does. `BaseMethod.parse_response` digs `__unwrap__` out
+        # of the body before parsing, so asserting against the raw body instead would demand a
+        # flat shape the real API never sends — and this suite passed for exactly that reason
+        # while every enveloped endpoint raised a ValidationError in the client.
+        raw = response.json()
+        unwrap = matched_entry.method_cls.__unwrap__
+        returning.from_raw(raw[unwrap] if unwrap else raw)
