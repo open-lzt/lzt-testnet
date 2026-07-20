@@ -3,7 +3,7 @@
 # lzt-testnet
 
 **A mock FastAPI server that reproduces the `lzt.market` / `lolzteam` API surface for
-offline testing against [`pylzt`](../aiolzt).** No live tokens, no real money, no
+offline testing against [`pylzt`](../pylzt).** No live tokens, no real money, no
 rate limits — and it can reproduce edge cases (rate-limiting, token revocation,
 non-idempotent double-buy) the real API won't hand you on demand.
 
