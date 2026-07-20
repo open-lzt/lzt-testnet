@@ -11,6 +11,7 @@ from lzt_testnet import errors
 from lzt_testnet.api.dependencies import force_error_header, get_bearer_token
 from lzt_testnet.chaos.legacy import raise_legacy_forced_error
 from lzt_testnet.fake.generator import FakeGenerator
+from lzt_testnet.fake.query_filters import apply_query_filters
 
 router = APIRouter()
 
@@ -69,4 +70,4 @@ async def catch_all(
 
     fake_generator = cast("FakeGenerator", request.app.state.fake_generator)
     instance = fake_generator.build(entry.returning, overrides=overrides)
-    return instance.model_dump(mode="json")
+    return apply_query_filters(instance.model_dump(mode="json"), request.query_params)

@@ -87,4 +87,10 @@ def build_route_table(exclude_paths: frozenset[str]) -> RouteTable:
                 path_param_names=param_names,
             )
         )
+    # Specific-before-generic, the same precedence every router uses. The scan below is linear and
+    # first-match, so with declaration order a one-placeholder pattern like `/{item_id}` shadows the
+    # literal `/steam` — the request 404s or, worse, resolves to a foreign method whose response
+    # model is a Passthrough and answers `{}`. Sorting by placeholder count makes a literal path
+    # unreachable-by-accident: it is always tried first.
+    entries.sort(key=lambda entry: len(entry.path_param_names))
     return RouteTable(entries)
