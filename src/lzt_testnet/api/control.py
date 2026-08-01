@@ -5,8 +5,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
-from lzt_testnet.api.dependencies import require_control_key
 from lzt_testnet.api.catch_all import injection_store
+from lzt_testnet.api.dependencies import require_control_key
 
 router = APIRouter(dependencies=[Depends(require_control_key)])
 
