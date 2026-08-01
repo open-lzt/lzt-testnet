@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
-router = APIRouter()
+from lzt_testnet.api.dependencies import require_control_key
+
+router = APIRouter(dependencies=[Depends(require_control_key)])
 
 
 class RevokeTokenBody(BaseModel):
