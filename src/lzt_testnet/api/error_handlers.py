@@ -12,6 +12,7 @@ from lzt_testnet.errors import (
     PaymentFailed,
     RateLimited,
     TransportError,
+    WorldDisabled,
 )
 
 
@@ -30,6 +31,13 @@ def register_error_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=401,
             content={"error": "AuthFailed", "token_id": exc.token_id},
+        )
+
+    @app.exception_handler(WorldDisabled)
+    async def _handle_world_disabled(_request: Request, exc: WorldDisabled) -> JSONResponse:
+        return JSONResponse(
+            status_code=409,
+            content={"error": "WorldDisabled", "enable_with": f"{exc.setting}=1"},
         )
 
     @app.exception_handler(NotFound)

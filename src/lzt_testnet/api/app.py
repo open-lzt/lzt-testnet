@@ -49,7 +49,11 @@ def create_app() -> FastAPI:
     else:
         profile = profile_for(settings.chaos_mode)
         seed_value = settings.chaos_seed
-        world_config = WorldConfig() if settings.chaos_mode is not Intensity.OFF else None
+        world_config = (
+            WorldConfig()
+            if settings.world or settings.chaos_mode is not Intensity.OFF
+            else None
+        )
 
     # The determinism spine: one seed fixes every fault decision and every generated datum (D1).
     seed = SeedController(seed_value)

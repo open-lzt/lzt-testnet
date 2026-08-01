@@ -85,3 +85,17 @@ class ScenarioError(TestnetError):
 
     def __post_init__(self) -> None:
         super().__init__(self.detail)
+
+
+@dataclass
+class WorldDisabled(TestnetError):
+    """Maps to HTTP 409 — the route exists, the feature it serves is switched off.
+
+    An empty page would be indistinguishable from a world that is on and has nothing in it,
+    and a caller reading `items: []` concludes the mock is broken rather than unconfigured.
+    """
+
+    setting: str = "LZT_TESTNET_WORLD"
+
+    def __post_init__(self) -> None:
+        super().__init__(self.setting)

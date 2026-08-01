@@ -11,6 +11,7 @@ from typing import Any
 
 from fastapi import APIRouter, Query, Request
 
+from lzt_testnet import errors
 from lzt_testnet.world.arm import WorldBundle
 
 router = APIRouter(prefix="/testnet/world")
@@ -18,6 +19,13 @@ router = APIRouter(prefix="/testnet/world")
 
 def _world(request: Request) -> WorldBundle | None:
     return getattr(request.app.state, "world", None)
+
+
+def _require_world(request: Request) -> WorldBundle:
+    world = _world(request)
+    if world is None:
+        raise errors.WorldDisabled
+    return world
 
 
 def _page(items: list[Any], next_cursor: int | None) -> dict[str, Any]:
@@ -30,9 +38,7 @@ async def forum_users(
     cursor: int | None = Query(default=None),
     limit: int = Query(default=20),
 ) -> dict[str, Any]:
-    world = _world(request)
-    if world is None:
-        return {"items": [], "next_cursor": None}
+    world = _require_world(request)
     users, next_cursor = world.forum.list_users(cursor, limit)
     return _page(users, next_cursor)
 
@@ -43,18 +49,14 @@ async def forum_threads(
     cursor: int | None = Query(default=None),
     limit: int = Query(default=20),
 ) -> dict[str, Any]:
-    world = _world(request)
-    if world is None:
-        return {"items": [], "next_cursor": None}
+    world = _require_world(request)
     threads, next_cursor = world.forum.list_threads(cursor, limit)
     return _page(threads, next_cursor)
 
 
 @router.get("/forum/threads/{thread_id}/posts", operation_id="world-forum-posts")
 async def forum_posts(request: Request, thread_id: int) -> dict[str, Any]:
-    world = _world(request)
-    if world is None:
-        return {"items": []}
+    world = _require_world(request)
     return {"items": [asdict(p) for p in world.forum.posts_of(thread_id)]}
 
 
@@ -66,9 +68,7 @@ async def world_lots(
     limit: int = Query(default=20),
 ) -> dict[str, Any]:
     """The effectively-infinite streaming account list — lots materialize on first fetch."""
-    world = _world(request)
-    if world is None:
-        return {"items": [], "next_cursor": None}
+    world = _require_world(request)
     lots = world.materializer.page(category=category, cursor=cursor, limit=limit)
     return {
         "items": [asdict(lot) for lot in lots],
@@ -79,7 +79,7 @@ async def world_lots(
 @router.get("/lots/{item_id}/check", operation_id="world-lot-check")
 async def check_lot(request: Request, item_id: int) -> dict[str, Any]:
     """A bad-lot / blacklist check: a SPAM seller's lot fails deterministically, every time."""
-    world = _world(request)
-    if world is None:
-        return {"item_id": item_id, "valid": True}
+    # `valid: True` with no world behind it is a check that never ran reporting a pass — the
+    # caller cannot tell it apart from a lot that was actually examined and cleared.
+    world = _require_world(request)
     return {"item_id": item_id, "valid": not world.materializer.lot_check_fails(item_id)}

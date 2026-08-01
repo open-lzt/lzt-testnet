@@ -65,10 +65,15 @@ async def test_forum_limit_zero_no_crash(world_client: AsyncClient) -> None:
     assert resp.json() == {"items": [], "next_cursor": None}
 
 
-async def test_no_world_returns_empty() -> None:
-    # default app (chaos OFF) has no world → forum routes are empty, existing suite unaffected.
+async def test_no_world_says_so_instead_of_answering_empty() -> None:
+    """This used to assert a 200 with an empty page.
+
+    That made a switched-off world indistinguishable from one that is on and holds nothing, and
+    the caller's only reading of `items: []` was "the mock is broken". The route now names the
+    setting that turns it on.
+    """
     transport = ASGITransport(app=create_app())
     async with AsyncClient(transport=transport, base_url="http://testserver") as ac:
         resp = await ac.get("/testnet/world/forum/users")
-    assert resp.status_code == 200
-    assert resp.json() == {"items": [], "next_cursor": None}
+    assert resp.status_code == 409
+    assert resp.json() == {"error": "WorldDisabled", "enable_with": "LZT_TESTNET_WORLD=1"}

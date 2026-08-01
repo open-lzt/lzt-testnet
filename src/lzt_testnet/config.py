@@ -25,6 +25,12 @@ class Settings(BaseSettings):
     # reset button for everyone else's test run.
     control_key: str | None = None
 
+    # The stateful world (seller roster, forum, lazily materialised lots). Off by default so
+    # the plain mock stays stateless, but a switch of its own: it used to be armed only as a
+    # side effect of turning the chaos harness on, which made a populated world and injected
+    # faults the same decision.
+    world: bool = False
+
     # Gauntlet chaos harness — OFF by default so the server stays a clean mock (D2).
     chaos_mode: Intensity = Intensity.OFF
     chaos_seed: int = 0
