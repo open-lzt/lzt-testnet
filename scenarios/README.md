@@ -18,7 +18,6 @@ python -m lzt_testnet.cli --scenario nginx-down
 | `weights` | map<fault, float> | intensity's | relative weight of each fault; overrides the base menu |
 | `per_endpoint` | map<endpoint, map<fault, float>> | `{}` | weight overrides for `buy` / `list_lots` / `payments` |
 | `world` | `WorldConfig` | none | arm the stateful roster + forum (`roster_size`, `spam_ratio`, …) |
-| `oracle` | bool | `false` | run the differential-oracle for this scenario |
 
 Fault names are the `FaultKind` values (e.g. `http_502_nginx`, `byzantine_missing_field`,
 `retry_storm`). An unknown name fails validation — CI rejects the PR.
@@ -27,5 +26,6 @@ Fault names are the `FaultKind` values (e.g. `http_502_nginx`, `byzantine_missin
 
 1. Copy an existing file, rename it, set a distinct `name`/`seed`.
 2. Pick weights that tell a story (see `nginx-down` for a single dominant fault,
-   `pagination-hell` for per-endpoint corruption).
+   `pagination-hell` for per-endpoint corruption, `domain-race-conditions` for the stateful
+   buy faults — retried charges, late settlements, a lot sold out from under a second buyer).
 3. Run `pytest tests/chaos/test_scenario.py` — it loads and validates every shipped file.

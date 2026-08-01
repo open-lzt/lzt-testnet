@@ -8,4 +8,3 @@ world:
   roster_size: 20
   spam_ratio: 0.6
   lots_per_spam_seller: 80
-oracle: true

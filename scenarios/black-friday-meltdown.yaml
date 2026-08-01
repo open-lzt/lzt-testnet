@@ -14,4 +14,3 @@ weights:
 world:
   roster_size: 16
   spam_ratio: 0.4
-oracle: true

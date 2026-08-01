@@ -97,7 +97,7 @@ def _domain_outcome(request: Request, item_id: int, token: str) -> DomainOutcome
     if counters is None:
         counters = {}
         request.app.state.chaos_counters = counters
-    view = DomainView(item_id=item_id, token=token, was_bought=False)
+    view = DomainView(item_id=item_id, token=token)
     return maybe_inject(fault, view, counters)
 
 

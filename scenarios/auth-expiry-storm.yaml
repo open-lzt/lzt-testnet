@@ -7,4 +7,3 @@ weights:
   auth_drop_401: 3.0
   rate_limited_429: 1.0
   slow: 0.5
-oracle: true
