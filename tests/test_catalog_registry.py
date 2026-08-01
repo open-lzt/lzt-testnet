@@ -10,7 +10,11 @@ from lzt_testnet.catalog.route_table import build_route_table
 # pylzt declares these routes twice (alias classes). Only the first can ever be served; the
 # other is recorded as shadowed. Pinned here so a NEW collision — which would silently steal a
 # route from whichever class loses the ordering — fails instead of disappearing.
-_KNOWN_SHADOWED = (("POST", "/search", "SearchAll"), ("POST", "/batch", "Batch"))
+_KNOWN_SHADOWED = (
+    ("POST", "/search", "SearchAll"),
+    ("POST", "/claims", "ManagingCreateClaim"),
+    ("POST", "/batch", "Batch"),
+)
 
 
 def test_collect_base_methods_finds_the_full_surface() -> None:
