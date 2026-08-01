@@ -44,8 +44,15 @@ class RouteEntry:
 class RouteTable:
     """Linear-scan lookup over `RouteEntry` instances — ~200 entries, fine for a mock server."""
 
-    def __init__(self, entries: list[RouteEntry]) -> None:
+    def __init__(
+        self, entries: list[RouteEntry], shadowed: tuple[tuple[str, str, str], ...] = ()
+    ) -> None:
         self._entries = entries
+        #: `(verb, url, class name)` for every method a same-route sibling shadows. pylzt ships
+        #: aliases (`Batch`/`BatchExecute`, `SearchAll`/`LicenseSearch`) that declare one route
+        #: twice; only the first can ever be served, and this records which lost rather than
+        #: leaving it silent. A NEW entry here means an upstream collision worth looking at.
+        self.shadowed = shadowed
 
     def match(self, http_method: str, path: str) -> tuple[RouteEntry, dict[str, str]] | None:
         """Returns the matched entry + extracted path params, or `None` (-> 404 upstream)."""
@@ -66,6 +73,12 @@ def build_route_table(exclude_paths: frozenset[str]) -> RouteTable:
     stateful endpoints handled by a separate named route, added in a later task.
     """
     entries: list[RouteEntry] = []
+    # A duplicate (verb, url) is invisible otherwise: the scan is first-match, so the loser is
+    # never served and the caller silently gets the winner's response model. Recorded rather than
+    # raised — the collisions are upstream aliases in pylzt, and a mock that refuses to start
+    # over someone else's catalog is worse than one that reports what it dropped.
+    seen: dict[tuple[str, str], type[BaseMethod]] = {}  # type: ignore[type-arg]
+    shadowed: list[tuple[str, str, str]] = []
     for method_cls in collect_base_methods():
         url = method_cls.__url__
         if not url or url in exclude_paths:
@@ -74,6 +87,11 @@ def build_route_table(exclude_paths: frozenset[str]) -> RouteTable:
             # another method's request rather than owning a standalone HTTP route,
             # so there's no distinct path to serve here.
             continue
+        key = (method_cls.__http_method__.value, url)
+        if key in seen:
+            shadowed.append((*key, method_cls.__name__))
+            continue
+        seen[key] = method_cls
         returning = method_cls.__returning__
         pattern, param_names = _compile_path_pattern(url)
         entries.append(
@@ -93,4 +111,4 @@ def build_route_table(exclude_paths: frozenset[str]) -> RouteTable:
     # model is a Passthrough and answers `{}`. Sorting by placeholder count makes a literal path
     # unreachable-by-accident: it is always tried first.
     entries.sort(key=lambda entry: len(entry.path_param_names))
-    return RouteTable(entries)
+    return RouteTable(entries, tuple(shadowed))
