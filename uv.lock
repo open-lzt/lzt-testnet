@@ -546,7 +546,7 @@ wheels = [
 [[package]]
 name = "pylzt"
 version = "0.2.0"
-source = { git = "https://github.com/open-lzt/pylzt.git?branch=main#cdfbc140d66ff07561995649d81f975cc3ec0824" }
+source = { git = "https://github.com/open-lzt/pylzt.git?branch=main#5399fea339e3d66e993dc8734e936786eb03eaf4" }
 dependencies = [
     { name = "httpx", extra = ["socks"] },
     { name = "pydantic" },

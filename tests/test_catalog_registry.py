@@ -12,6 +12,7 @@ from lzt_testnet.catalog.route_table import build_route_table
 # route from whichever class loses the ordering — fails instead of disappearing.
 _KNOWN_SHADOWED = (
     ("POST", "/search", "SearchAll"),
+    ("POST", "/claims", "ManagingCreateClaim"),
     ("POST", "/batch", "Batch"),
 )
 
