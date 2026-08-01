@@ -18,6 +18,7 @@ from lzt_testnet.chaos.scenario import load_scenario
 from lzt_testnet.chaos.seed import SeedController
 from lzt_testnet.config import get_settings
 from lzt_testnet.fake.generator import FakeGenerator
+from lzt_testnet.state.injection_store import InjectionStore
 from lzt_testnet.state.lot_store import LotStore
 from lzt_testnet.state.payment_store import PaymentStore
 from lzt_testnet.state.scenario_store import ScenarioStore
@@ -57,6 +58,7 @@ def create_app() -> FastAPI:
     app.state.route_table = route_table
     app.state.fake_generator = FakeGenerator()
     app.state.lot_store = LotStore()
+    app.state.injection_store = InjectionStore()
     app.state.payment_store = PaymentStore()
     app.state.scenario_store = ScenarioStore()
     app.state.settings = settings

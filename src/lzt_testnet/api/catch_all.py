@@ -12,6 +12,7 @@ from lzt_testnet.api.dependencies import force_error_header, get_bearer_token
 from lzt_testnet.chaos.legacy import raise_legacy_forced_error
 from lzt_testnet.fake.generator import FakeGenerator
 from lzt_testnet.fake.query_filters import apply_query_filters
+from lzt_testnet.state.injection_store import InjectionStore
 
 router = APIRouter()
 
@@ -70,4 +71,45 @@ async def catch_all(
 
     fake_generator = cast("FakeGenerator", request.app.state.fake_generator)
     instance = fake_generator.build(entry.returning, overrides=overrides)
-    return apply_query_filters(instance.model_dump(mode="json"), request.query_params)
+    payload = apply_query_filters(instance.model_dump(mode="json"), request.query_params)
+    return _prepend_injected(payload, path, injection_store(request))
+
+
+def injection_store(request: Request) -> InjectionStore:
+    """Lazily attached so the router works mounted without the full app wiring (bare-app tests)."""
+    store: InjectionStore | None = getattr(request.app.state, "injection_store", None)
+    if store is None:
+        store = InjectionStore()
+        request.app.state.injection_store = store
+    return store
+
+
+def _prepend_injected(
+    payload: dict[str, Any], path: str, store: InjectionStore
+) -> dict[str, Any]:
+    """Put lots injected via `POST /testnet/inject-lot` at the head of a category listing.
+
+    Each injected lot is cloned from a generated one and then overridden, so it satisfies the
+    same response model — inventing a bare dict here would break every typed SDK caller.
+    Injection happens after the query filters on purpose: the folding filters would rewrite the
+    very price and title the caller asked us to inject.
+    """
+    items = payload.get("items")
+    if not isinstance(items, list) or not items:
+        return payload
+    template = items[0]
+    if not isinstance(template, dict):
+        return payload
+
+    injected = store.for_category(path.split("/")[0].split("?")[0])
+    if not injected:
+        return payload
+
+    for lot in reversed(injected):
+        row = dict(template)
+        row.update(lot)
+        items.insert(0, row)
+    total = payload.get("totalItems")
+    if isinstance(total, int):
+        payload["totalItems"] = total + len(injected)
+    return payload
