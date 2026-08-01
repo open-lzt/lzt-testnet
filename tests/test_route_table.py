@@ -32,5 +32,13 @@ def test_exclude_paths_removes_matching_entries() -> None:
     full_table = build_route_table(exclude_paths=frozenset())
     excluded_table = build_route_table(exclude_paths=frozenset({"/posts/{post_id}"}))
 
-    assert len(excluded_table._entries) == len(full_table._entries) - 1  # noqa: SLF001
+    # One path, several verbs: `exclude_paths` drops the whole path, so the entry count falls
+    # by however many operations that path declares — not by one.
+    excluded_verbs = sum(
+        1
+        for entry in full_table._entries  # noqa: SLF001
+        if entry.method_cls.__url__ == "/posts/{post_id}"
+    )
+    assert excluded_verbs >= 1
+    assert len(excluded_table._entries) == len(full_table._entries) - excluded_verbs  # noqa: SLF001
     assert excluded_table.match("GET", "/posts/12345") is None
