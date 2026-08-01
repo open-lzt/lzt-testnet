@@ -9,6 +9,7 @@ from httpx import ASGITransport, AsyncClient
 from lzt_testnet.api.catch_all import router
 from lzt_testnet.catalog.registry import collect_base_methods
 from lzt_testnet.catalog.route_table import build_route_table
+from lzt_testnet.fake.generator import FakeGenerator
 from lzt_testnet.state.scenario_store import ScenarioStore
 
 _SAMPLE_METHOD_NAMES = [
@@ -49,7 +50,6 @@ def _make_app() -> FastAPI:
     app = FastAPI()
     app.state.route_table = build_route_table(exclude_paths=frozenset())
     app.state.scenario_store = ScenarioStore()
-    from lzt_testnet.fake.generator import FakeGenerator
 
     app.state.fake_generator = FakeGenerator()
     app.include_router(router)
