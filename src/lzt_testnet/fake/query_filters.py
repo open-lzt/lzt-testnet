@@ -112,7 +112,12 @@ _RULES: Mapping[str, _Rule] = {
     "sb": _Rule("nsb", _flag_off),
     "no_vac": _Rule("steam_community_ban", _flag_off),
     "mm_ban": _Rule("steam_community_ban", _flag_off),
-    "mafile": _Rule("steam_mafile", _flag_on),
+    # TODO(debt): `mafile=1` has no rule because no item model declares a backing field — the
+    # closest thing in pylzt is the separate MaFile response model, not an attribute on
+    # SteamItem. A rule pointing at "steam_mafile" was here and could never fire on any
+    # category, which reads to a caller as "the real API ignores mafile too".
+    # Proper fix: capture a live filtered search and repoint the rule at the real wire field.
+    # Deferred: needs a HAR capture this repo does not have.
     "trade_ban": _Rule("steam_is_limited", _flag_off),
     "trade_limit": _Rule("steam_is_limited", _flag_off),
 }
@@ -187,6 +192,27 @@ def _fold_into_window(value: int, low: int | None, high: int | None) -> int:
     return value
 
 
+def _fold_value(value: Any, low: int | None, high: int | None) -> Any:
+    """Fold a window onto a value, preserving its wire type.
+
+    A bare `isinstance(value, int)` gate silently skipped every numeric field the API sends as a
+    string — `steam_balance` is declared `str` in pylzt, so `balance_min`/`balance_max` folded
+    nothing at all and a caller got back out-of-range balances with no way to notice.
+    A non-numeric value is returned untouched: the field is not a window, whatever it is.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return _fold_into_window(value, low, high)
+    if isinstance(value, str):
+        try:
+            as_int = int(float(value))
+        except ValueError:
+            return value
+        return str(_fold_into_window(as_int, low, high))
+    return value
+
+
 def apply_query_filters(payload: dict[str, Any], params: Mapping[str, str]) -> dict[str, Any]:
     """Fold a generated `items` page into compliance with the query, then order it."""
     items = payload.get("items")
@@ -195,8 +221,8 @@ def apply_query_filters(payload: dict[str, Any], params: Mapping[str, str]) -> d
 
     for field, (low, high) in _collect_windows(params).items():
         for item in items:
-            if isinstance(item, dict) and isinstance(item.get(field), int):
-                item[field] = _fold_into_window(item[field], low, high)
+            if isinstance(item, dict) and field in item:
+                item[field] = _fold_value(item[field], low, high)
 
     for name, raw in params.items():
         rule = _RULES.get(name)
