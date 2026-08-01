@@ -30,7 +30,6 @@ class ScenarioSpec(BaseModel):
     weights: dict[FaultKind, float] | None = None
     per_endpoint: dict[str, dict[FaultKind, float]] = {}
     world: WorldConfig | None = None
-    oracle: bool = False
 
     def to_profile(self) -> ChaosProfile:
         """Compile to the ChaosProfile the planner rolls against — scenario weights override the
@@ -40,7 +39,10 @@ class ScenarioSpec(BaseModel):
         probability = (
             self.fault_probability
             if self.fault_probability is not None
-            else (base.fault_probability if base else 0.5)
+            # 0.0, not 0.5, when there is no base profile: `intensity: off` has no BUILTIN entry,
+            # and a scenario that names it must not inherit a coin-flip rate its author never
+            # wrote — harmless only while the menu is empty, and silently live the day it is not.
+            else (base.fault_probability if base else 0.0)
         )
         return ChaosProfile(
             name=self.name,

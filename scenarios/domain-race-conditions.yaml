@@ -1,0 +1,17 @@
+name: domain-race-conditions
+seed: 21
+intensity: hostile
+fault_probability: 0.4
+# The only shipped surface that arms DOMAIN faults. Every built-in intensity weights transport
+# faults alone, so before this file a client could not exercise the idempotency story — a retried
+# buy that already charged, a settlement that lands late — by naming anything.
+weights:
+  already_sold: 1.0
+per_endpoint:
+  buy:
+    retry_storm: 2.0
+    charge_then_fail: 1.0
+    delayed_settlement: 1.0
+    already_sold: 1.0
+    account_invalid: 1.0
+    bad_lot_check: 1.0

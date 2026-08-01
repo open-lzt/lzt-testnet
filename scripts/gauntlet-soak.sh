@@ -6,11 +6,15 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
+# uv run, never a bare `python`: the ambient interpreter never saw `uv sync` and fails with an
+# import error that reads like the regression being soaked for.
+uv sync --extra dev
+
 SCENARIO="${1:-nginx-down}"
 REQUESTS="${2:-200}"
 SEED="${3:-502}"
 
-python - "$SCENARIO" "$REQUESTS" "$SEED" <<'PY'
+uv run python - "$SCENARIO" "$REQUESTS" "$SEED" <<'PY'
 import asyncio
 import sys
 import time

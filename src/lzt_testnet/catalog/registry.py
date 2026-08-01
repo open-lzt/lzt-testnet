@@ -64,4 +64,9 @@ def collect_base_methods() -> list[type[BaseMethod]]:  # type: ignore[type-arg] 
         module = importlib.import_module(module_info.name)
         inspect.getmembers(module, lambda obj: isinstance(obj, type))
 
-    return [cls for cls in _walk_subclasses(BaseMethod) if _is_concrete(cls)]
+    # Sorted, because the walk accumulates into a `set`: its iteration order follows object
+    # hashes and is not stable across processes. `build_route_table` breaks ties on placeholder
+    # count by input order, so an unsorted collection makes route precedence — and therefore
+    # which handler answers an ambiguous path — differ between two runs of the same code.
+    concrete = [cls for cls in _walk_subclasses(BaseMethod) if _is_concrete(cls)]
+    return sorted(concrete, key=lambda cls: f"{cls.__module__}.{cls.__qualname__}")

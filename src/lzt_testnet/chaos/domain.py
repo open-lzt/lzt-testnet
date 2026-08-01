@@ -20,7 +20,6 @@ class DomainView:
 
     item_id: int | None
     token: str
-    was_bought: bool
 
 
 class DomainOutcome(StrEnum):

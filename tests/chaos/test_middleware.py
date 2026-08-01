@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 
+import anyio
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
@@ -90,7 +91,6 @@ async def test_unknown_x_chaos_is_400_not_500(off_client: AsyncClient) -> None:
 
 def _fault_sequence(seed: int) -> list[int]:
     """Status codes over a fixed 12-request script under hostile chaos at `seed`."""
-    import anyio
 
     async def run() -> list[int]:
         async with _client(_armed_app(mode=Intensity.HOSTILE, seed=seed)) as ac:

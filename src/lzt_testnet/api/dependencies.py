@@ -5,8 +5,22 @@ from __future__ import annotations
 from fastapi import Header
 
 from lzt_testnet import errors
+from lzt_testnet.config import get_settings
 
 _BEARER_PREFIX = "Bearer "
+
+
+async def require_control_key(
+    x_testnet_control_key: str | None = Header(default=None),
+) -> None:
+    """Guards the control plane with `Settings.control_key`; a null key leaves it open.
+
+    Deliberately not the bearer token: this is harness control, not marketplace auth, and the
+    two must not share a credential — a scenario token is handed to the code under test.
+    """
+    expected = get_settings().control_key
+    if expected and x_testnet_control_key != expected:
+        raise errors.AuthFailed(token_id="")
 
 
 async def get_bearer_token(authorization: str | None = Header(default=None)) -> str:

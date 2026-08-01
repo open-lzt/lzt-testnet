@@ -1,4 +1,4 @@
-"""T12 — scenario YAML loads + validates; the 5 shipped scenarios parse; bad specs are rejected."""
+"""T12 — scenario YAML loads + validates; the shipped scenarios parse; bad specs are rejected."""
 
 from __future__ import annotations
 
@@ -6,12 +6,13 @@ from pathlib import Path
 
 import pytest
 
-from lzt_testnet.chaos.faults import FaultKind
+from lzt_testnet.chaos.faults import DOMAIN, FaultKind
 from lzt_testnet.chaos.profiles import Intensity
-from lzt_testnet.chaos.scenario import ScenarioSpec, load_scenario
+from lzt_testnet.chaos.scenario import _SCENARIO_ROOT, ScenarioSpec, load_scenario
 from lzt_testnet.errors import ScenarioError
 
 _SHIPPED = [
+    "domain-race-conditions",
     "black-friday-meltdown",
     "auth-expiry-storm",
     "seller-spam-flood",
@@ -67,4 +68,18 @@ def test_non_mapping_rejected(tmp_path: Path) -> None:
 def test_spec_defaults() -> None:
     spec = ScenarioSpec(name="x")
     assert spec.intensity is Intensity.HOSTILE
-    assert spec.oracle is False
+
+
+def test_every_domain_fault_is_reachable_from_a_shipped_scenario() -> None:
+    """A fault no shipped scenario can roll is a documented capability that does not exist.
+
+    Every built-in intensity weights transport faults only, so without a scenario naming them
+    the whole stateful convergence machinery is reachable solely from in-repo test helpers.
+    """
+    reachable: set[FaultKind] = set()
+    for path in sorted(_SCENARIO_ROOT.glob("*.yaml")):
+        profile = load_scenario(path.stem).to_profile()
+        reachable |= set(profile.weights)
+        for menu in profile.per_endpoint.values():
+            reachable |= set(menu)
+    assert set(DOMAIN) <= reachable
