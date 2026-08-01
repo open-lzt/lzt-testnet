@@ -41,7 +41,6 @@ class Materializer:
         self._sellers = sellers
         self._scenario = scenario
         self._config = config
-        self._owner: dict[int, int] = {}  # materialized item_id -> owning seller_id
         self._roster_cache: list[SellerRecord] | None = None  # static after WorldBuilder.populate
 
     def stable_id(self, category: str, index: int) -> int:
@@ -68,21 +67,30 @@ class Materializer:
             out.append(self._materialize(category, index, item_id, roster))
         return out
 
+    def _owner_of(self, item_id: int) -> SellerRecord | None:
+        """Ownership comes off the stored `LotRecord`, never a parallel id cache.
+
+        A cache populated only in `_materialize` misses every lot created through `POST /lots`,
+        which builds a `LotRecord` and calls `lot_store.create` directly — those lots would read
+        as ownerless and so could never fail the SPAM check.
+        """
+        record = self._lots.get(item_id)
+        if record is None:
+            return None
+        return self._sellers.by_token(record.seller_token)
+
     def seller_of(self, item_id: int) -> SellerRecord:
-        seller = self._sellers.get(self._owner[item_id])
-        if seller is None:  # pragma: no cover - owner map only holds valid ids
+        seller = self._owner_of(item_id)
+        if seller is None:
             raise KeyError(item_id)
         return seller
 
     def lot_check_fails(self, item_id: int) -> bool:
         """True iff the lot's owning seller is SPAM — the deterministic blacklist / bad-lot signal.
 
-        Only known (already-materialized) lots can fail; an unseen id is treated as clean.
+        Only known (already-stored) lots can fail; an unseen id is treated as clean.
         """
-        seller_id = self._owner.get(item_id)
-        if seller_id is None:
-            return False
-        seller = self._sellers.get(seller_id)
+        seller = self._owner_of(item_id)
         return seller is not None and seller.quality is SellerQuality.SPAM
 
     def _roster(self) -> list[SellerRecord]:
@@ -105,6 +113,4 @@ class Materializer:
             published_at=_BASE_TS,
         )
         self._lots.create(record)
-        if owner is not None:
-            self._owner[item_id] = owner.seller_id
         return record
