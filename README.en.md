@@ -2,73 +2,46 @@
 
 # lzt-testnet
 
-**A mock FastAPI server that reproduces the `lzt.market` / `lolzteam` API surface for
-offline testing against [`pylzt`](../pylzt).** No live tokens, no real money, no
-rate limits — and it can reproduce edge cases (rate-limiting, token revocation,
-non-idempotent double-buy) the real API won't hand you on demand.
+A FastAPI mock of the `lzt.market` API. Test your code against [pylzt](https://github.com/open-lzt/pylzt) with no live token, no money, no rate limits.
 
-[AI-agent docs](docs/for_ai/index.en.md) — module map + invariants, read this before the source.
-
-> Private repo, part of the lolzteam-ecosystem sibling set (`pylzt`, `lzt-eventus`,
-> `lzt-flow`, `lzt-testnet`). No secrets, no real tokens anywhere — it's a fake server.
-
-## Quickstart
+It does what the real API won't do on demand: 429s, token revocation, buying the same lot twice.
 
 ```bash
-cp .env.example .env   # optional — defaults already match
 uv sync --extra dev
 scripts/run.sh
-```
-
-The server listens on `http://127.0.0.1:8765` by default (override via
-`LZT_TESTNET_HOST` / `LZT_TESTNET_PORT`, either exported or in `.env`).
-
-```bash
 curl http://127.0.0.1:8765/testnet/health
 # {"status":"ok"}
 ```
 
-## Operating it
+## Install
 
-| Task | Command |
-|---|---|
-| Reset all in-memory state (server must be running) | `scripts/reset.sh` |
-| Revoke a bearer token mid-session | `curl -X POST .../testnet/revoke-token -d '{"token":"..."}'` |
-| Health check | `curl .../testnet/health` |
-| Shut down | Ctrl-C the `scripts/run.sh` process — state is in-memory only, nothing to clean up |
+Requires [uv](https://docs.astral.sh/uv/) and Python 3.12+.
 
-## How the ~206 stateless routes are derived
+```bash
+git clone https://github.com/open-lzt/lzt-testnet.git
+cd lzt-testnet
+cp .env.example .env      # optional, the defaults work
+uv sync --extra dev
+```
 
-`src/lzt_testnet/catalog/registry.py` walks `pylzt.methods` with
-`pkgutil.walk_packages`, importing every submodule so all concrete `BaseMethod`
-subclasses register, then collects them recursively via `__subclasses__()`.
-`src/lzt_testnet/catalog/route_table.py` turns each collected class into a
-`RouteEntry` — compiling its `__url__` path template into a matchable regex and
-recording its HTTP method and declared `__returning__` response model. A single
-catch-all route (`src/lzt_testnet/api/catch_all.py`, `/{path:path}`) matches incoming
-requests against this table and returns a `polyfactory`-generated fake instance of the
-matched method's response model.
+Run:
 
-This means the route table is **generated from pylzt's own typed methods**, not
-hand-copied — it tracks pylzt's method catalog automatically as methods are added.
+```bash
+scripts/run.sh                              # 127.0.0.1:8765
+scripts/run.sh --host 0.0.0.0 --port 9100
+uv run python -m lzt_testnet.cli --port 9100   # the same, directly
+```
 
-## Examples
+## Point pylzt at it
 
-Four non-overlapping ways to drive this server, matching the four layers of the test
-suite (see [`docs/for_ai/index.en.md`](docs/for_ai/index.en.md#test-suite-shape) for the full
-picture).
-
-### 1. Point a real `pylzt.Client` at it (the intended integration path)
-
-In pytest — one line via the `testnet_client` fixture (the pytest plugin ships with
-`lzt-testnet`; the mock runs in-process over ASGI, no socket):
+In pytest — one fixture. The plugin installs with the package and the mock is served in-process over ASGI, so no socket is involved.
 
 ```python
-async def test_my_autobuy(testnet_client):   # a pylzt.Client already aimed at the mock
+async def test_autobuy(testnet_client):      # a pylzt.Client already aimed at the mock
     lot = await testnet_client.market.get_lot(item_id=123)
 ```
 
-Outside pytest — `ClientConfig.for_testnet()` replaces the hand-written `base_url` wiring:
+Outside pytest:
 
 ```python
 from pylzt import Client, ClientConfig
@@ -77,13 +50,30 @@ client = Client.from_token("fake-token", config=ClientConfig.for_testnet())
 lot = await client.market.get_lot(item_id=123)
 ```
 
-Every `BaseMethod` call now round-trips through the mock server instead of the live API.
+From here every `BaseMethod` call goes to the mock instead of the live API.
 
-### 2. Drive the stateful lot lifecycle directly over HTTP
+## Force an error
 
-Use this when testing flow-authoring code that depends on real create/buy semantics
-(not just response *shape*) — e.g. proving your own retry logic handles a non-idempotent
-`fast-buy` correctly:
+The `X-Testnet-Force-Error` header is checked before any state mutation — both on the catch-all route and on all 6 stateful routes.
+
+```bash
+curl -i http://127.0.0.1:8765/market/lot/123 \
+  -H "Authorization: Bearer any-token" \
+  -H "X-Testnet-Force-Error: rate_limited"
+# HTTP/1.1 429 — {"error":"RateLimited","retry_after":1.0}
+```
+
+| Value | Response |
+|---|---|
+| `rate_limited` | 429 |
+| `auth_failed` | 401 |
+| `not_found` | 404 |
+| `transport_error` | 500 |
+| `payment_failed` | 402 |
+
+## Stateful lots
+
+Real create/buy semantics, not just the shape of a response. This is how you prove your retries don't break on a non-idempotent `fast-buy`.
 
 ```bash
 curl -X POST http://127.0.0.1:8765/testnet/stateful/lots \
@@ -93,33 +83,54 @@ curl -X POST http://127.0.0.1:8765/testnet/stateful/lots \
 
 curl -X POST http://127.0.0.1:8765/testnet/stateful/lots/1/buy \
   -H "Authorization: Bearer buyer-token"
-# 200 — first buy succeeds
+# 200 — first purchase
 
 curl -X POST http://127.0.0.1:8765/testnet/stateful/lots/1/buy \
   -H "Authorization: Bearer buyer-token"
-# 404 NotFound — second buy on the same item_id, proving non-idempotency isn't hidden
+# 404 NotFound — same lot, second time
 ```
 
-### 3. Force a deterministic error scenario
+## Authentication
 
-Use this for testing your own error-handling paths (retry-on-`RateLimited`, alert-on-
-`PaymentFailed`) without waiting for the real API to misbehave:
+Every route requires `Authorization: Bearer <token>`. Missing or malformed header → 401 `AuthFailed`.
 
 ```bash
-curl -i http://127.0.0.1:8765/market/lot/123 \
-  -H "Authorization: Bearer any-token" \
-  -H "X-Testnet-Force-Error: rate_limited"
-# HTTP/1.1 429 — {"error":"RateLimited","retry_after":1.0}
+curl -X POST http://127.0.0.1:8765/testnet/revoke-token -d '{"token":"buyer-token"}'
+# every later request with that token → 401
 ```
 
-Values: `rate_limited` (429) · `auth_failed` (401) · `not_found` (404) ·
-`transport_error` (500) · `payment_failed` (402). Checked before any state
-mutation, on both the catch-all route and all 6 stateful routes.
+The token string is never checked against any store — anything not revoked is valid.
 
-### 4. Boot it in-process for your own test suite
+## Operating it
 
-Use this in a CI job that needs a real socket (e.g. testing a client that isn't
-ASGI-transport-testable) without a separate process to manage:
+| Task | Command |
+|---|---|
+| Reset all state | `scripts/reset.sh` |
+| Health | `curl http://127.0.0.1:8765/testnet/health` |
+| Stop | `Ctrl-C` — state is in memory only, nothing to clean up |
+
+## Configuration
+
+`src/lzt_testnet/config.py`, `pydantic-settings`, prefix `LZT_TESTNET_`.
+
+| Variable | Default |
+|---|---|
+| `LZT_TESTNET_HOST` | `127.0.0.1` |
+| `LZT_TESTNET_PORT` | `8765` |
+| `LZT_TESTNET_LOG_LEVEL` | `INFO` |
+| `LZT_TESTNET_CONTROL_KEY` | empty — key for the `/testnet/*` routes |
+
+## Where the ~206 routes come from
+
+The route table is **generated from pylzt's own typed methods** rather than transcribed by hand — a new method in pylzt shows up here on its own.
+
+- `catalog/registry.py` — walks `pylzt.methods` via `pkgutil.walk_packages` and collects every `BaseMethod` subclass.
+- `catalog/route_table.py` — turns each class into a `RouteEntry`: the `__url__` template compiled to a regex, its HTTP method, its declared `__returning__` response model.
+- `api/catch_all.py` — the `/{path:path}` route matches a request against that table and returns a `polyfactory`-generated instance of the matched response model.
+
+## A real socket instead of ASGI
+
+For a CI job that needs an actual port:
 
 ```python
 import threading
@@ -128,32 +139,13 @@ from lzt_testnet.api.app import create_app
 
 config = uvicorn.Config(create_app(), host="127.0.0.1", port=0, log_level="warning")
 server = uvicorn.Server(config)
-thread = threading.Thread(target=server.run, daemon=True)
-thread.start()
-# poll /testnet/health until server.started, then use server.servers[0].sockets[0]
-# for the bound port — see tests/test_lztforge_client_smoke.py for the full fixture.
+threading.Thread(target=server.run, daemon=True).start()
+# wait for server.started, the bound port is in server.servers[0].sockets[0]
 ```
 
-## Auth
+A ready-made fixture lives in `tests/test_lztforge_client_smoke.py`.
 
-Every route requires `Authorization: Bearer <token>` — missing or malformed → 401
-`AuthFailed`. `POST /testnet/revoke-token` with body `{"token": "<bearer-token>"}`
-revokes a token; subsequent requests using it then fail with 401, even though the
-token string itself was never valid against any real credential store.
-
-## Config
-
-`src/lzt_testnet/config.py` — `Settings` (`pydantic-settings`, prefix `LZT_TESTNET_`):
-
-| Variable | Default |
-|---|---|
-| `LZT_TESTNET_HOST` | `127.0.0.1` |
-| `LZT_TESTNET_PORT` | `8765` |
-| `LZT_TESTNET_LOG_LEVEL` | `INFO` |
-
-## Contributing
-
-Local dev, no CI configured yet:
+## Development
 
 ```bash
 uv sync --extra dev
@@ -161,6 +153,12 @@ uv run ruff check . && uv run ruff format --check .
 uv run mypy src
 uv run pytest -q
 ```
+
+[AI-agent docs](docs/for_ai/index.md) — module map and invariants, read before the source.
+
+## Ecosystem
+
+[pylzt](https://github.com/open-lzt/pylzt) · [auto-lzt](https://github.com/open-lzt/auto-lzt) · [lzt-eventus](https://github.com/open-lzt/lzt-eventus) · [lzt-mcp](https://github.com/open-lzt/lzt-mcp) · [the whole stand](https://github.com/open-lzt/open-lzt)
 
 ## License
 
