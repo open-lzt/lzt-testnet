@@ -1,44 +1,41 @@
-# The Gauntlet — chaos harness for lzt.market plugins
+<p align="right"><a href="gauntlet.en.md">English</a> · <b>Русский</b></p>
 
-The testnet mock is a *happy-path* server by default. The Gauntlet turns it hostile: it injects the
-failures the real market throws at you — 502s, dropped auth, byzantine payloads, "already sold"
-races, retry storms — all driven by **one seed**, so a failure is reproducible and CI is
-deterministic. It is **OFF by default**; the mock stays clean and the existing test-suite is
-unaffected until you arm it.
+# Gauntlet — стенд хаоса для плагинов lzt.market
 
-## Three ways to arm it
+Мок testnet по умолчанию отдаёт счастливый путь. Gauntlet делает его враждебным: подсовывает те отказы, которыми в вас кидается настоящий маркет — 502, отвалившуюся авторизацию, византийские ответы, гонки «уже продано», штормы ретраев. Всё это управляется **одним seed**, поэтому падение воспроизводится, а CI детерминирован.
 
-**1. Globally, from the CLI / env** — the whole server runs hostile:
+**По умолчанию выключен.** Пока вы его не взвели, мок остаётся чистым и существующий набор тестов не меняется.
+
+## Три способа взвести
+
+**1. Глобально, из CLI или окружения** — весь сервер работает враждебно:
 
 ```bash
 ./scripts/run.sh --chaos hostile --seed 42
-# or a named scenario:
+# или именованный сценарий:
 ./scripts/run.sh --scenario nginx-down
-# equivalently, via env:
+# то же самое через переменные:
 LZT_TESTNET_CHAOS_MODE=hostile LZT_TESTNET_CHAOS_SEED=42 ./scripts/run.sh
 ```
 
-Intensities: `calm` → `flaky` → `hostile` → `lzt_friday` (progressively nastier).
+Интенсивность по нарастающей: `calm` → `flaky` → `hostile` → `lzt_friday`.
 
-**2. Per request, from a unit test** — the `X-Chaos` header forces one exact, deterministic fault:
+**2. На один запрос, из юнит-теста** — заголовок `X-Chaos` вызывает ровно один детерминированный сбой:
 
 ```
-X-Chaos: http_502_nginx@*      # a raw nginx 502 on any route
-X-Chaos: rate_limited_429@*    # 429 with Retry-After
-X-Chaos: account_invalid@buy   # the buy "succeeds" but the account is invalid
-X-Chaos: retry_storm@buy       # the first N buys are transient, then converge
+X-Chaos: http_502_nginx@*      # сырой 502 от nginx на любом маршруте
+X-Chaos: rate_limited_429@*    # 429 с Retry-After
+X-Chaos: account_invalid@buy   # покупка «прошла», но аккаунт невалиден
+X-Chaos: retry_storm@buy       # первые N покупок временно падают, потом сходятся
 ```
 
-`kind@endpoint` targets one endpoint (`buy` / `list_lots` / `payments`); `kind` or `kind@*` hits all.
-The full fault list is the `FaultKind` enum in `src/lzt_testnet/chaos/faults.py`.
+`kind@endpoint` бьёт по одному эндпоинту (`buy`, `list_lots`, `payments`), а `kind` или `kind@*` — по всем. Полный список сбоев — енум `FaultKind` в `src/lzt_testnet/chaos/faults.py`.
 
-**3. A named scenario** — a weighted fault menu (+ optional stateful world) as YAML in `scenarios/`.
-Shipped: `black-friday-meltdown`, `auth-expiry-storm`, `seller-spam-flood`, `nginx-down`,
-`pagination-hell`. See `scenarios/README.md` for the schema.
+**3. Именованный сценарий** — взвешенное меню сбоев плюс необязательный stateful-мир, YAML в `scenarios/`. В комплекте: `black-friday-meltdown`, `auth-expiry-storm`, `seller-spam-flood`, `nginx-down`, `pagination-hell`. Схема — в `scenarios/README.md`.
 
-## Reading the scorecard
+## Как читать карточку результата
 
-Every injected fault is recorded. After a run, `app.state.recorder.report().as_scorecard()` prints:
+Каждый внедрённый сбой записывается. После прогона `app.state.recorder.report().as_scorecard()` печатает:
 
 ```
 Gauntlet scorecard (seed=502)
@@ -48,39 +45,34 @@ Gauntlet scorecard (seed=502)
     seq=17 path=/testnet/stateful/lots/3/buy fault=charge_then_fail — double charge
 ```
 
-A failed probe carries the exact `seed`, request `seq`, and `fault` — re-run with that seed and the
-identical fault fires at the identical point.
+Провалившаяся проба несёт точные `seed`, номер запроса `seq` и `fault`. Перезапуск с тем же seed выстрелит тем же сбоем в той же точке.
 
-## Plugin-author helpers (`tests/helpers/gauntlet.py`)
+## Помощники для автора плагина (`tests/helpers/gauntlet.py`)
 
 ```python
 from tests.helpers.gauntlet import assert_idempotent, assert_blacklists, assert_survives, run_oracle
 
-report = await assert_survives("nginx-down", my_client_script)   # runs the scenario, returns a scorecard
-await assert_idempotent(client, buy, item_id=id, token=tok)      # retry_storm → exactly one payment
-await assert_blacklists(client)                                  # spam-seller lots fail their check
+report = await assert_survives("nginx-down", my_client_script)   # гоняет сценарий, отдаёт карточку
+await assert_idempotent(client, buy, item_id=id, token=tok)      # retry_storm → ровно один платёж
+await assert_blacklists(client)                                  # лоты спам-продавца не проходят проверку
 ```
 
-### The differential oracle (eventual correctness)
+### Дифференциальный оракул
 
-The killer check: run the **same** client script clean and under chaos; a correct (idempotent)
-client reaches the **same business outcome** either way.
+Главная проверка: прогнать **один и тот же** клиентский сценарий начисто и под хаосом. Корректный, то есть идемпотентный, клиент приходит к **одному и тому же деловому результату** в обоих случаях.
 
 ```python
-assert await run_oracle(my_script, seed=1) is True    # idempotent client converges
+assert await run_oracle(my_script, seed=1) is True    # идемпотентный клиент сходится
 ```
 
-A non-idempotent client diverges and `run_oracle` returns `False` — that is the oracle catching a
-real bug the happy-path tests never would.
+Неидемпотентный клиент разъезжается, и `run_oracle` возвращает `False`. Это оракул поймал настоящий баг, которого счастливый путь не увидел бы никогда.
 
-## Soak
+## Долгий прогон
 
 ```bash
-./scripts/gauntlet-soak.sh nginx-down 200 502   # scenario, requests, seed → faults/sec baseline
+./scripts/gauntlet-soak.sh nginx-down 200 502   # сценарий, число запросов, seed → базовая линия сбоев в секунду
 ```
 
-## Note — deterministic ids
+## Про детерминированные id
 
-Lot/payment ids are seed-scoped **per app instance** (they start from `1` for each `create_app()`),
-not process-global. This is intentional (reproducible ids per run); a single long-lived server is
-unaffected, and every test gets a fresh, deterministic id sequence.
+Ловушка: id лотов и платежей привязаны к seed **в пределах экземпляра приложения** — для каждого `create_app()` они начинаются с `1`, а не сквозные по процессу. Так и задумано: id воспроизводимы от прогона к прогону. На один долгоживущий сервер это не влияет, а каждый тест получает свежую детерминированную последовательность.
