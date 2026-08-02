@@ -154,7 +154,7 @@ uv run mypy src
 uv run pytest -q
 ```
 
-[AI-agent docs](docs/for_ai/index.md) — module map and invariants, read before the source.
+[AI-agent docs](docs/for_ai/index.en.md) — module map and invariants, read before the source.
 
 ## Ecosystem
 
