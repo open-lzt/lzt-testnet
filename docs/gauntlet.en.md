@@ -1,3 +1,5 @@
+<p align="right"><b>English</b> · <a href="gauntlet.md">Русский</a></p>
+
 # The Gauntlet — chaos harness for lzt.market plugins
 
 The testnet mock is a *happy-path* server by default. The Gauntlet turns it hostile: it injects the
