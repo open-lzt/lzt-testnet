@@ -66,7 +66,7 @@ def _with_content_length(
 def _delay_s(fault: Fault) -> float:
     """The SLOW/TIMEOUT sleep from ``params`` (values are typed ``object``); default 50ms."""
     value = fault.params.get("delay_s", 0.05)
-    return float(value) if isinstance(value, (int, float)) else 0.05
+    return float(value) if isinstance(value, int | float) else 0.05
 
 
 async def _send_json(send: Send, status: int, payload: dict[str, object]) -> None:

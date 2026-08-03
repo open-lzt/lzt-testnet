@@ -36,9 +36,7 @@ def _clear_settings_cache() -> Iterator[None]:
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("path", _WORLD_ROUTES)
-async def test_world_off_is_reported_not_faked(
-    path: str, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_world_off_is_reported_not_faked(path: str, monkeypatch: pytest.MonkeyPatch) -> None:
     """An empty page here reads as "the mock is broken" rather than "it is switched off"."""
     monkeypatch.delenv("LZT_TESTNET_WORLD", raising=False)
     get_settings.cache_clear()

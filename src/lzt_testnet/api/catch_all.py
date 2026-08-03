@@ -84,9 +84,7 @@ def injection_store(request: Request) -> InjectionStore:
     return store
 
 
-def _prepend_injected(
-    payload: dict[str, Any], path: str, store: InjectionStore
-) -> dict[str, Any]:
+def _prepend_injected(payload: dict[str, Any], path: str, store: InjectionStore) -> dict[str, Any]:
     """Put lots injected via `POST /testnet/inject-lot` at the head of a category listing.
 
     Each injected lot is cloned from a generated one and then overridden, so it satisfies the
