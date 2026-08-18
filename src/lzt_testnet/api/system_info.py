@@ -81,7 +81,11 @@ class SystemInfoMiddleware(BaseHTTPMiddleware):
                 media_type=response.media_type,
             )
 
-        if isinstance(payload, dict) and _KEY not in payload:
+        # ПУСТОЙ объект конверта не получает. `{}` — это ответ catch-all на метод, у которого нет
+        # модели: признание «сказать нечего». Конверт делает такую заглушку похожей на настоящий
+        # ответ, то есть ровно тем ложным доказательством, против которого писался этот стенд.
+        # Поймано в CI: 75 e2e-тестов сверяют такой ответ на точное равенство `{}`.
+        if isinstance(payload, dict) and payload and _KEY not in payload:
             payload[_KEY] = build_system_info()
 
         encoded = json.dumps(payload, ensure_ascii=False).encode()
