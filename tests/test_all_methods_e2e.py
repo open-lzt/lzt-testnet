@@ -18,7 +18,7 @@ import httpx
 import pytest
 import uvicorn
 
-from lzt_testnet.api.app import create_app
+from lzt_testnet.api.app import STATEFUL_PATHS, create_app
 from lzt_testnet.catalog.registry import collect_base_methods
 from lzt_testnet.catalog.route_table import build_route_table
 
@@ -102,6 +102,8 @@ def _all_methods() -> list[type]:  # type: ignore[type-arg]
     return unique
 
 
+# Таблица строится БЕЗ исключений намеренно: тест обязан видеть каждый метод, включая те, что
+# приложение уводит в свои роуты, — иначе исчезнувшую ручку никто не заметит.
 _ROUTE_TABLE = build_route_table(exclude_paths=frozenset())
 
 
@@ -128,6 +130,13 @@ def test_method_roundtrip_over_real_socket(
     match = _ROUTE_TABLE.match(http_method, "/" + request_path.lstrip("/"))
     assert match is not None
     matched_entry, _ = match
+    if matched_entry.method_cls.__url__ in STATEFUL_PATHS:
+        # Путь обслуживается состоянием (`api/forum_posts.py`), а не таблицей: 200 выше — всё,
+        # что здесь проверяется. Ветка `returning is None` ниже требует РОВНО `{}` и потому
+        # закрепляет то, ради отмены чего эти ручки и написаны: upstream объявил их Passthrough,
+        # мок отвечал пустотой, а сценарий, читающий участников темы, завершался зелёным, никого
+        # не увидев. Форму этих ответов проверяет `tests/test_forum_posts.py`.
+        return
     returning = matched_entry.returning
     if returning is None:
         assert response.json() == {}
