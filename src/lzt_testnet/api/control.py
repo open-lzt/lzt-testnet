@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from lzt_testnet.api.catch_all import injection_store
 from lzt_testnet.api.dependencies import require_control_key
+from lzt_testnet.api.forum_posts import thread_store
 
 router = APIRouter(dependencies=[Depends(require_control_key)])
 
@@ -30,6 +31,7 @@ async def reset_state(request: Request) -> dict[str, str]:
     request.app.state.payment_store.reset()
     request.app.state.scenario_store.reset()
     injection_store(request).reset()
+    thread_store(request).reset()
     return {"status": "reset"}
 
 
@@ -49,3 +51,44 @@ async def inject_lot(request: Request, body: InjectLotBody) -> dict[str, object]
 async def revoke_token(request: Request, body: RevokeTokenBody) -> dict[str, str]:
     request.app.state.scenario_store.revoke(body.token)
     return {"status": "revoked", "token": body.token}
+
+
+class SeedPostBody(BaseModel):
+    """Один участник темы: кто написал и что."""
+
+    thread_id: int
+    poster_user_id: int
+    poster_username: str = ""
+    post_body: str = ""
+
+
+class SeedLikeBody(BaseModel):
+    post_id: int
+    user_id: int
+    username: str = ""
+
+
+@router.post("/testnet/forum/seed-post")
+async def seed_post(request: Request, body: SeedPostBody) -> dict[str, object]:
+    """Кладёт в тему чужое сообщение — участника раздачи.
+
+    Отдельная ручка, а не `POST /posts`: тот пишет ОТ ИМЕНИ токена и всегда одним автором, то есть
+    заселить тему разными людьми им нельзя. А раздача без разных авторов не проверяет ничего:
+    дедупликация участников — главное, что в ней может сломаться.
+    """
+    post = thread_store(request).add_post(
+        body.thread_id,
+        poster_user_id=body.poster_user_id,
+        poster_username=body.poster_username or f"user{body.poster_user_id}",
+        post_body=body.post_body,
+    )
+    return {"status": "seeded", "post_id": post.post_id, "thread_id": post.thread_id}
+
+
+@router.post("/testnet/forum/seed-like")
+async def seed_like(request: Request, body: SeedLikeBody) -> dict[str, object]:
+    """Симпатия к посту от чужого имени. `already-liked` — этот человек уже лайкал."""
+    added = thread_store(request).like(
+        body.post_id, user_id=body.user_id, username=body.username or f"user{body.user_id}"
+    )
+    return {"status": "seeded" if added else "already-liked", "post_id": body.post_id}

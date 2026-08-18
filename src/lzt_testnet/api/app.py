@@ -8,7 +8,10 @@ from lzt_testnet.api.catch_all import router as catch_all_router
 from lzt_testnet.api.control import router as control_router
 from lzt_testnet.api.error_handlers import register_error_handlers
 from lzt_testnet.api.forum import router as forum_router
+from lzt_testnet.api.forum_posts import FORUM_POST_PATHS
+from lzt_testnet.api.forum_posts import router as forum_posts_router
 from lzt_testnet.api.stateful import router as stateful_router
+from lzt_testnet.api.system_info import SystemInfoMiddleware
 from lzt_testnet.catalog.route_table import build_route_table
 from lzt_testnet.chaos.middleware import FaultInjectionMiddleware
 from lzt_testnet.chaos.planner import FaultPlanner
@@ -27,8 +30,13 @@ from lzt_testnet.world.builder import WorldConfig
 
 # stateful.py's 6 routes live under their own /testnet/stateful/* prefix, disjoint
 # from the real pylzt path templates the catch-all table matches against —
-# nothing to exclude here.
-STATEFUL_PATHS: frozenset[str] = frozenset()
+# nothing to exclude there.
+#
+# forum_posts.py is the opposite case and the reason this set is no longer empty: it serves the
+# REAL upstream urls, so its three routes and the catch-all's table entries claim the same paths.
+# Excluded here, the table stops matching them and the catch-all 404s instead of answering `{}` —
+# which is what it did for `posts_list`, upstream having declared it Passthrough.
+STATEFUL_PATHS: frozenset[str] = FORUM_POST_PATHS
 
 
 def create_app() -> FastAPI:
@@ -90,7 +98,12 @@ def create_app() -> FastAPI:
     app.include_router(control_router)
     app.include_router(stateful_router)
     app.include_router(forum_router)
+    # Before the catch-all: whoever registers first wins the path.
+    app.include_router(forum_posts_router)
     app.include_router(catch_all_router)
     app.add_middleware(FaultInjectionMiddleware)
+    # Added last, so it wraps OUTERMOST and stamps whatever the inner layers produced —
+    # including a response a fault-injection rewrite handed back.
+    app.add_middleware(SystemInfoMiddleware)
 
     return app
