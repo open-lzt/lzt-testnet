@@ -30,9 +30,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Body, Query, Request
+from fastapi import APIRouter, Query, Request
+from pydantic import BaseModel
 
-from lzt_testnet import errors
 from lzt_testnet.state.thread_store import PostRecord, ThreadStore
 
 router = APIRouter()
@@ -46,6 +46,18 @@ _DEFAULT_LIMIT = 20
 #: the testnet has no user table, so it answers as one fixed operator.
 _SELF_USER_ID = 1
 _SELF_USERNAME = "testnet-operator"
+#: Куда падает публикация без темы. Смоук стенда шлёт голый запрос, и пост без `thread_id` должен
+#: куда-то лечь; отдельная тема держит такой мусор в стороне от тем, которые кто-то читает.
+_SCRATCH_THREAD = 0
+
+
+class CreatePostBody(BaseModel):
+    """Тело публикации. Каждое поле необязательно: смоук стенда шлёт запрос без тела вовсе."""
+
+    post_body: str = ""
+    thread_id: int | None = None
+    #: Принимается, потому что вызывающий вправе прислать; цитаты мок не воспроизводит.
+    quote_post_id: int | None = None
 
 
 def thread_store(request: Request) -> ThreadStore:
@@ -76,12 +88,17 @@ async def posts_list(
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=_DEFAULT_LIMIT, ge=1, le=100),
 ) -> dict[str, Any]:
-    """A thread's posts. ``thread_id`` is optional upstream, so its absence is a caller error here
-    rather than a silent empty page: a giveaway that lost its thread id must not read as a thread
-    with no participants."""
-    if thread_id is None:
-        raise errors.NotFound(item_id="posts?thread_id=")
+    """Посты темы.
+
+    Без `thread_id` — пустая тема и 200, а не отказ. Первая версия отвечала 404 «потерянный
+    thread_id — не то же самое, что пустая тема», и это верно по смыслу, но неверно здесь: апстрим
+    объявляет параметр необязательным, а смоук стенда требует 200 от КАЖДОГО метода на голый
+    запрос. Ломать общий контракт ради одной ручки — плохая сделка; потерянный `thread_id` ловится
+    там, где он теряется, а не здесь.
+    """
     store = thread_store(request)
+    if thread_id is None:
+        return {"posts": [], "thread": None, "posts_total": 0}
     posts, total = store.page(thread_id, page=page, limit=limit)
     thread = store.get(thread_id)
     return {
@@ -99,9 +116,7 @@ async def posts_list(
 @router.post("/posts", operation_id="forum-posts-create")
 async def posts_create(
     request: Request,
-    post_body: str = Body(embed=True),
-    thread_id: int | None = Body(default=None, embed=True),
-    quote_post_id: int | None = Body(default=None, embed=True),
+    body: CreatePostBody | None = None,
 ) -> dict[str, Any]:
     """Publish into a thread, and actually KEEP it: the next ``posts_list`` returns it.
 
@@ -109,14 +124,12 @@ async def posts_create(
     reads the thread back. A create that returned a generated post without storing it would let the
     whole scenario pass while the commitment existed nowhere.
     """
-    del quote_post_id  # accepted because the caller may send it; the mock threads no quotes
-    if thread_id is None:
-        raise errors.NotFound(item_id="posts (no thread_id)")
+    body = body or CreatePostBody()
     post = thread_store(request).add_post(
-        thread_id,
+        body.thread_id if body.thread_id is not None else _SCRATCH_THREAD,
         poster_user_id=_SELF_USER_ID,
         poster_username=_SELF_USERNAME,
-        post_body=post_body,
+        post_body=body.post_body,
     )
     return {"post": _post_json(post)}
 
@@ -134,3 +147,22 @@ async def posts_likes(
         "users": [{"user_id": uid, "username": name} for uid, name in likers],
         "users_total": total,
     }
+
+
+@router.post("/posts/{post_id}/likes", operation_id="forum-posts-like")
+async def posts_like(request: Request, post_id: int) -> dict[str, Any]:
+    """Поставить симпатию от имени токена.
+
+    Реализован потому, что путь `/posts/{post_id}/likes` целиком выведен из таблицы маршрутов ради
+    GET — а исключение снимает ВСЕ глаголы разом. POST и DELETE остались бы без обработчика и
+    отвечали 404: ручка, которую никто не убирал, просто исчезла бы. Поймано смоуком в CI.
+    """
+    thread_store(request).like(post_id, user_id=_SELF_USER_ID, username=_SELF_USERNAME)
+    return {"status": "ok"}
+
+
+@router.delete("/posts/{post_id}/likes", operation_id="forum-posts-unlike")
+async def posts_unlike(request: Request, post_id: int) -> dict[str, Any]:
+    """Снять свою симпатию. Пары к `posts_like` — иначе снять было бы нечем."""
+    thread_store(request).unlike(post_id, user_id=_SELF_USER_ID)
+    return {"status": "ok"}

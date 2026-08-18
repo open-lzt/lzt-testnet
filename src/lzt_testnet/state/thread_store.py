@@ -116,6 +116,19 @@ class ThreadStore:
             return True
         return False
 
+    def unlike(self, post_id: int, *, user_id: int) -> bool:
+        """Снять симпатию. `False` — этот человек её и не ставил."""
+        for thread in self._threads.values():
+            likers = thread.likes.get(post_id)
+            if likers is None:
+                continue
+            remaining = [(uid, name) for uid, name in likers if uid != user_id]
+            if len(remaining) == len(likers):
+                return False
+            thread.likes[post_id] = remaining
+            return True
+        return False
+
     def likers(self, post_id: int, *, page: int, limit: int) -> tuple[list[tuple[int, str]], int]:
         for thread in self._threads.values():
             if any(p.post_id == post_id for p in thread.posts):

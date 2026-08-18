@@ -80,10 +80,18 @@ def test_pages_do_not_overlap_or_skip(client: TestClient) -> None:
     assert seen == [1, 2, 3, 4, 5]
 
 
-def test_a_missing_thread_id_is_an_error_not_an_empty_thread(client: TestClient) -> None:
-    """Пустая тема и потерянный `thread_id` — разные утверждения. Отвечая пустым списком на второе,
-    мок сказал бы «в раздаче никто не участвовал» про запрос, который темы даже не назвал."""
-    assert client.get("/posts", headers=_AUTH).status_code == 404
+def test_a_request_without_a_thread_id_still_answers(client: TestClient) -> None:
+    """Без `thread_id` — пустая тема и 200.
+
+    Сначала было 404: «потерянный `thread_id` — не то же самое, что пустая тема», и по смыслу это
+    верно. Но апстрим объявляет параметр необязательным, а смоук стенда (`test_all_methods_e2e`)
+    требует 200 от КАЖДОГО метода на голый запрос — ломать общий контракт ради одной ручки дороже,
+    чем ловить потерянный идентификатор там, где он теряется.
+    """
+    response = client.get("/posts", headers=_AUTH)
+
+    assert response.status_code == 200
+    assert response.json()["posts"] == []
 
 
 def test_a_published_post_is_readable_back(client: TestClient) -> None:
@@ -147,7 +155,9 @@ def test_every_json_response_carries_system_info(client: TestClient) -> None:
 def test_an_error_does_not_get_a_success_envelope(client: TestClient) -> None:
     """Форма ошибки — её собственный контракт. Приклеив к ней `system_info`, middleware заставил бы
     клиента, который ветвится по форме ответа, принять отказ за успех."""
-    response = client.get("/posts", headers=_AUTH)
+    # Путь из НЕСКОЛЬКИХ сегментов: односегментный проглатывает `GetLot`, объявленный апстримом
+    # как `/{item_id}` — он матчит что угодно и отвечает 200. Свойство чужого каталога, не стенда.
+    response = client.get("/zzz/yyy/xxx", headers=_AUTH)
 
     assert response.status_code == 404
     assert "system_info" not in response.json()
