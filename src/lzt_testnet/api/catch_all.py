@@ -59,7 +59,9 @@ async def catch_all(
         raise errors.AuthFailed(token_id=token)
 
     if entry.returning is None:
-        return {}
+        # 501, not `{}` with a 200: an empty success is indistinguishable from a real answer,
+        # so a run reading it finished green having read nothing. Debt: .plans/typed-endpoints.md
+        raise errors.NotTyped(url=entry.method_cls.__url__, http_method=request.method)
 
     overrides: dict[str, object] = {}
     if issubclass(entry.returning, BaseModel):

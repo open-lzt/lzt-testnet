@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
 from lzt_testnet.api.catch_all import router
+from lzt_testnet.api.error_handlers import register_error_handlers
 from lzt_testnet.catalog.registry import collect_base_methods
 from lzt_testnet.catalog.route_table import build_route_table
 from lzt_testnet.fake.generator import FakeGenerator
@@ -52,6 +53,7 @@ def _make_app() -> FastAPI:
     app.state.scenario_store = ScenarioStore()
 
     app.state.fake_generator = FakeGenerator()
+    register_error_handlers(app)  # untyped methods answer 501 through the mapping, not a raw raise
     app.include_router(router)
     return app
 
@@ -76,7 +78,6 @@ async def test_stateless_route_roundtrip(method_cls: type) -> None:  # type: ign
             headers={"Authorization": "Bearer testtoken"},
         )
 
-    assert response.status_code == 200
     # `RouteTable.match` is a first-match linear scan (frozen contract): a shared path
     # prefix earlier in registration order can win over `method_cls`'s own entry, so
     # validate against whichever entry actually resolved for this path, not the method
@@ -86,6 +87,9 @@ async def test_stateless_route_roundtrip(method_cls: type) -> None:  # type: ign
     matched_entry, _ = match
     returning = matched_entry.returning
     if returning is None:
-        assert response.json() == {}
+        # Not typed upstream: the stand refuses loudly instead of answering an empty success.
+        assert response.status_code == 501
+        assert response.json()["error"] == "NotTyped"
     else:
+        assert response.status_code == 200
         returning.from_raw(response.json())
