@@ -122,7 +122,6 @@ def test_method_roundtrip_over_real_socket(
             headers={"Authorization": "Bearer e2e-token"},
         )
 
-    assert response.status_code == 200
     # `RouteTable.match` is a first-match linear scan (frozen contract): a shared path
     # template registered earlier can win over `method_cls`'s own entry, so validate
     # against whichever entry the server actually resolved, not the method we intended
@@ -131,14 +130,16 @@ def test_method_roundtrip_over_real_socket(
     assert match is not None
     matched_entry, _ = match
     if matched_entry.method_cls.__url__ in STATEFUL_PATHS:
-        # Путь обслуживается состоянием (`api/forum_posts.py`), а не таблицей: 200 выше — всё,
-        # что здесь проверяется. Ветка `returning is None` ниже требует РОВНО `{}` и потому
-        # закрепляет то, ради отмены чего эти ручки и написаны: upstream объявил их Passthrough,
-        # мок отвечал пустотой, а сценарий, читающий участников темы, завершался зелёным, никого
-        # не увидев. Форму этих ответов проверяет `tests/test_forum_posts.py`.
+        assert response.status_code == 200
+        # Путь обслуживается состоянием (`api/forum_posts.py`), а не таблицей: запись в ней всё ещё
+        # `Passthrough`, и ветка ниже ждала бы 501 от ручки, которая отвечает настоящими
+        # данными. Форму этих ответов проверяет `tests/test_forum_posts.py`.
         return
     returning = matched_entry.returning
     if returning is None:
-        assert response.json() == {}
+        # Not typed upstream: the stand refuses loudly instead of answering an empty success.
+        assert response.status_code == 501
+        assert response.json()["error"] == "NotTyped"
     else:
+        assert response.status_code == 200
         returning.from_raw(response.json())

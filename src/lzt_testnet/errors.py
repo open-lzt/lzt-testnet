@@ -99,3 +99,18 @@ class WorldDisabled(TestnetError):
 
     def __post_init__(self) -> None:
         super().__init__(self.setting)
+
+
+@dataclass
+class NotTyped(TestnetError):
+    """Maps to HTTP 501 - upstream declared this method `Passthrough`, so the stand has no shape.
+
+    Answering `{}` with a 200 instead made every run that touched such a method green without
+    reading anything. Debt and waves: .plans/typed-endpoints.md
+    """
+
+    url: str
+    http_method: str
+
+    def __post_init__(self) -> None:
+        super().__init__(self.url, self.http_method)

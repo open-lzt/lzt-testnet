@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from pydantic import BaseModel
 from pylzt.methods.base import BaseMethod, Passthrough
 from pylzt.types import ApiTarget, HttpMethod, RateClass
 
@@ -13,6 +14,25 @@ from lzt_testnet.catalog.registry import collect_base_methods
 __all__ = ["RouteEntry", "RouteTable", "build_route_table"]
 
 _PLACEHOLDER = re.compile(r"\{(\w+)\}")
+
+
+def _response_model(method_cls: type[BaseMethod]) -> type[BaseModel] | None:  # type: ignore[type-arg]
+    """The response model of a method, or None when it genuinely has no shape.
+
+    `__returning__` is not the only declaration. A hand-written method that owns its
+    `parse_response` leaves it `None` (`GetLot`) or `passthrough`, and states its type as the
+    generic argument of `BaseMethod[Lot]`. Reading only `__returning__` filed both as untyped,
+    and the stand answered `{}` — which `Lot.from_raw` accepted, so the client smoke test passed
+    on an empty body.
+    """
+    returning = method_cls.__returning__
+    if returning is not None and not isinstance(returning, Passthrough):
+        return returning
+    for base in method_cls.__mro__[1:]:
+        args = getattr(base, "__pydantic_generic_metadata__", {}).get("args")
+        if args and isinstance(args[0], type) and issubclass(args[0], BaseModel):
+            return args[0]
+    return None
 
 
 def _compile_path_pattern(url: str) -> tuple[re.Pattern[str], tuple[str, ...]]:
@@ -92,14 +112,13 @@ def build_route_table(exclude_paths: frozenset[str]) -> RouteTable:
             shadowed.append((*key, method_cls.__name__))
             continue
         seen[key] = method_cls
-        returning = method_cls.__returning__
         pattern, param_names = _compile_path_pattern(url)
         entries.append(
             RouteEntry(
                 http_method=method_cls.__http_method__,
                 api_target=method_cls.__api__,
                 rate_class=method_cls.__rate_class__,
-                returning=None if isinstance(returning, Passthrough) else returning,
+                returning=_response_model(method_cls),
                 method_cls=method_cls,
                 path_pattern=pattern,
                 path_param_names=param_names,

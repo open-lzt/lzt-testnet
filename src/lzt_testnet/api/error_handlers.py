@@ -9,6 +9,7 @@ from lzt_testnet.errors import (
     AuthFailed,
     BadRequest,
     NotFound,
+    NotTyped,
     PaymentFailed,
     RateLimited,
     TransportError,
@@ -64,3 +65,15 @@ def register_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(PaymentFailed)
     async def _handle_payment_failed(_request: Request, _exc: PaymentFailed) -> JSONResponse:
         return JSONResponse(status_code=402, content={"error": "PaymentFailed"})
+
+    @app.exception_handler(NotTyped)
+    async def _handle_not_typed(_request: Request, exc: NotTyped) -> JSONResponse:
+        return JSONResponse(
+            status_code=501,
+            content={
+                "error": "NotTyped",
+                "url": exc.url,
+                "http_method": exc.http_method,
+                "detail": "upstream declares this method Passthrough; no response shape",
+            },
+        )
