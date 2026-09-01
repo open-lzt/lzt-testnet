@@ -66,6 +66,11 @@ class FakeGenerator:
                 "type[ModelFactory[Any]]",
                 _JsonSafeFactory.create_factory(
                     model,
+                    # polyfactory leaves an optional field None half the time. `items` on a
+                    # catalog page became `Optional[list[Item]]` in pylzt 0.3.0, and a page that
+                    # answers `null` is the empty-success defect again: the caller reads nothing
+                    # and finishes green. A stand fills what it can.
+                    __allow_none_optionals__=0,
                     __randomize_collection_length__=True,
                     __min_collection_length__=_MIN_COLLECTION,
                     __max_collection_length__=_MAX_COLLECTION,
