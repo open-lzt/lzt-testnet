@@ -74,6 +74,6 @@ def register_error_handlers(app: FastAPI) -> None:
                 "error": "NotTyped",
                 "url": exc.url,
                 "http_method": exc.http_method,
-                "detail": "upstream declares this method Passthrough; the stand has no response shape",
+                "detail": "upstream declares this method Passthrough; no response shape",
             },
         )
